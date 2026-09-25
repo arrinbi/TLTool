@@ -116,35 +116,76 @@ export async function detectTextRegions(
 
     if (onProgress) onProgress({ status: 'Analyzing image layout & text...', progress: 0.4 });
 
-    const ret = await worker.recognize(imageSource);
+    // In Tesseract.js v7, passing { blocks: true } as the 3rd argument is required to populate block/layout data
+    const ret = await worker.recognize(imageSource, {}, { blocks: true });
 
     if (onProgress) onProgress({ status: 'Processing text blocks...', progress: 0.8 });
 
     const rawItems: { bbox: BoundingBox; text: string; confidence: number }[] = [];
 
     // Extract blocks/lines from Tesseract data
-    const data = ret.data as { blocks?: { paragraphs?: { lines?: { bbox: { x0: number; y0: number; x1: number; y1: number }; text: string; confidence: number }[] }[] }[] };
+    const data = ret.data as {
+      blocks?: Array<{
+        paragraphs?: Array<{
+          lines?: Array<{
+            bbox: { x0: number; y0: number; x1: number; y1: number };
+            text: string;
+            confidence: number;
+          }>;
+        }>;
+        lines?: Array<{
+          bbox: { x0: number; y0: number; x1: number; y1: number };
+          text: string;
+          confidence: number;
+        }>;
+      }>;
+      lines?: Array<{
+        bbox: { x0: number; y0: number; x1: number; y1: number };
+        text: string;
+        confidence: number;
+      }>;
+    };
 
-    if (data.blocks) {
+    const addLine = (line: {
+      bbox: { x0: number; y0: number; x1: number; y1: number };
+      text: string;
+      confidence: number;
+    }) => {
+      if (!line || !line.text || line.text.trim().length === 0) return;
+      const b = line.bbox;
+      if (!b) return;
+      const width = b.x1 - b.x0;
+      const height = b.y1 - b.y0;
+
+      if (width < 5 || height < 5) return;
+
+      rawItems.push({
+        bbox: { x: b.x0, y: b.y0, width, height },
+        text: line.text,
+        confidence: line.confidence ?? 80,
+      });
+    };
+
+    if (data.blocks && data.blocks.length > 0) {
       for (const block of data.blocks) {
-        if (!block.paragraphs) continue;
-        for (const para of block.paragraphs) {
-          if (!para.lines) continue;
-          for (const line of para.lines) {
-            if (!line.text || line.text.trim().length === 0) continue;
-            const b = line.bbox;
-            const width = b.x1 - b.x0;
-            const height = b.y1 - b.y0;
-
-            if (width < 5 || height < 5) continue;
-
-            rawItems.push({
-              bbox: { x: b.x0, y: b.y0, width, height },
-              text: line.text,
-              confidence: line.confidence,
-            });
+        if (block.paragraphs) {
+          for (const para of block.paragraphs) {
+            if (para.lines) {
+              for (const line of para.lines) {
+                addLine(line);
+              }
+            }
           }
         }
+        if (block.lines) {
+          for (const line of block.lines) {
+            addLine(line);
+          }
+        }
+      }
+    } else if (data.lines) {
+      for (const line of data.lines) {
+        addLine(line);
       }
     }
 
