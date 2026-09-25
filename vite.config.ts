@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/TLTool/',
   plugins: [react(), tailwindcss()],
   test: {
     globals: true,
