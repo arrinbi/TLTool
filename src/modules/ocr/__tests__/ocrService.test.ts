@@ -1,10 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { createWorker } from 'tesseract.js';
+
+vi.mock('tesseract.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('tesseract.js')>();
+  return {
+    ...actual,
+    createWorker: vi.fn(),
+  };
+});
 import {
   areBoxesNear,
   mergeBoxes,
   areUnitsInSameRegion,
   clusterBoxes,
   classifyRegionCategory,
+  computeOverlapRatio,
+  deduplicateTextUnits,
+  preprocessCanvasVariants,
+  detectTextRegions,
+  type TextUnit,
 } from '../ocrService';
 import type { BoundingBox } from '../../../types';
 
@@ -185,6 +199,165 @@ describe('OCR Service Helper Functions', () => {
       expect(bbox.y).toBe(148);
       expect(bbox.width).toBe(84);
       expect(bbox.height).toBe(26);
+    });
+  });
+
+  describe('Multi-Pass OCR Preprocessing & Deduplication', () => {
+    it('computes spatial overlap ratio accurately', () => {
+      const box1: BoundingBox = { x: 100, y: 100, width: 100, height: 50 };
+      const box2: BoundingBox = { x: 100, y: 100, width: 100, height: 50 }; // Exact match
+      const box3: BoundingBox = { x: 150, y: 100, width: 100, height: 50 }; // 50% overlap
+      const boxFar: BoundingBox = { x: 500, y: 500, width: 50, height: 20 };
+
+      expect(computeOverlapRatio(box1, box2)).toBe(1.0);
+      expect(computeOverlapRatio(box1, box3)).toBeCloseTo(0.5);
+      expect(computeOverlapRatio(box1, boxFar)).toBe(0);
+    });
+
+    it('deduplicates multi-pass OCR text units while keeping higher confidence and symbol-refined geometry', () => {
+      const pass1Units: TextUnit[] = [
+        { bbox: { x: 100, y: 100, width: 80, height: 25 }, text: 'SPEECH', confidence: 92 },
+        { bbox: { x: 190, y: 100, width: 60, height: 25 }, text: 'TEXT', confidence: 88 },
+      ];
+
+      // Pass 2 duplicate with slightly lower confidence
+      const pass2Units: TextUnit[] = [
+        { bbox: { x: 102, y: 100, width: 78, height: 25 }, text: 'SPEECH', confidence: 75 },
+      ];
+
+      // Pass 3 inverted pass unit for white SFX over dark artwork ("BAM!")
+      const pass3Units: TextUnit[] = [
+        { bbox: { x: 300, y: 400, width: 120, height: 60 }, text: 'BAM!', confidence: 95 },
+      ];
+
+      // Low confidence punctuation noise
+      const noiseUnit: TextUnit = {
+        bbox: { x: 20, y: 20, width: 5, height: 5 },
+        text: '.',
+        confidence: 15,
+      };
+
+      const combined = deduplicateTextUnits([...pass1Units, ...pass2Units, ...pass3Units, noiseUnit]);
+
+      expect(combined.length).toBe(3);
+      const texts = combined.map((u) => u.text);
+      expect(texts).toContain('SPEECH');
+      expect(texts).toContain('TEXT');
+      expect(texts).toContain('BAM!');
+      expect(texts).not.toContain('.');
+    });
+
+    it('handles fragmented detections cleanly (e.g. "I GUESS HE" vs "I", "GUESS", "HE")', () => {
+      // Pass 1 detected a full line/phrase
+      const pass1Phrase: TextUnit = {
+        bbox: { x: 100, y: 100, width: 180, height: 25 },
+        text: 'I GUESS HE',
+        confidence: 90,
+      };
+
+      // Pass 2 detected individual word fragments
+      const pass2Fragments: TextUnit[] = [
+        { bbox: { x: 100, y: 100, width: 20, height: 25 }, text: 'I', confidence: 85 },
+        { bbox: { x: 130, y: 100, width: 80, height: 25 }, text: 'GUESS', confidence: 88 },
+        { bbox: { x: 220, y: 100, width: 40, height: 25 }, text: 'HE', confidence: 85 },
+      ];
+
+      const deduplicated = deduplicateTextUnits([pass1Phrase, ...pass2Fragments]);
+      const regions = clusterBoxes(deduplicated);
+
+      // Should produce a single cluster / region with the complete text without fragmented duplicate boxes
+      expect(regions.length).toBe(1);
+      expect(regions[0].text.replace(/\s+/g, ' ')).toBe('I GUESS HE');
+    });
+
+    it('preprocesses canvas into standard, contrast, and inverted variants', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 200;
+      canvas.height = 200;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, 200, 200);
+      }
+
+      const variants = preprocessCanvasVariants(canvas);
+      expect(variants.standard).toBeDefined();
+      expect(variants.contrast).toBeDefined();
+      expect(variants.inverted).toBeDefined();
+      expect(variants.standard.width).toBe(200);
+      expect(variants.contrast.height).toBe(200);
+      expect(variants.inverted.width).toBe(200);
+    });
+
+    it('detectTextRegions derives final regions exclusively from multi-pass deduplicated results', async () => {
+      vi.mocked(createWorker).mockResolvedValue({
+        setParameters: vi.fn().mockResolvedValue(undefined),
+        recognize: vi.fn().mockResolvedValue({ data: { blocks: [] } }),
+        terminate: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Awaited<ReturnType<typeof createWorker>>);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+
+      const regions = await detectTextRegions(canvas);
+      expect(Array.isArray(regions)).toBe(true);
+    });
+
+    it('executes createWorker once and runs standard, contrast, and inverted OCR passes sequentially', async () => {
+      const mockRecognize = vi.fn().mockImplementation(() => {
+        return Promise.resolve({
+          data: {
+            blocks: [
+              {
+                paragraphs: [
+                  {
+                    lines: [
+                      {
+                        words: [
+                          {
+                            bbox: { x0: 10, y0: 10, x1: 50, y1: 30 },
+                            text: 'TEST',
+                            confidence: 90,
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      });
+      const mockSetParameters = vi.fn().mockResolvedValue(undefined);
+      const mockTerminate = vi.fn().mockResolvedValue(undefined);
+
+      vi.mocked(createWorker).mockResolvedValue({
+        setParameters: mockSetParameters,
+        recognize: mockRecognize,
+        terminate: mockTerminate,
+      } as unknown as Awaited<ReturnType<typeof createWorker>>);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+
+      const progressEvents: string[] = [];
+      const regions = await detectTextRegions(canvas, (p) => progressEvents.push(p.status));
+
+      expect(createWorker).toHaveBeenCalledTimes(1);
+      expect(createWorker).toHaveBeenCalledWith('eng');
+      expect(mockSetParameters).toHaveBeenCalledTimes(1);
+      expect(mockRecognize).toHaveBeenCalledTimes(3);
+
+      expect(mockTerminate).toHaveBeenCalledTimes(1);
+      expect(regions.length).toBeGreaterThan(0);
+      expect(progressEvents).toContain('Preparing canvas and image passes...');
+      expect(progressEvents).toContain('Analyzing standard speech bubble text...');
+      expect(progressEvents).toContain('Analyzing low-contrast text regions...');
+      expect(progressEvents).toContain('Analyzing stylized SFX and wild text...');
+      expect(progressEvents).toContain('Done');
     });
   });
 });
