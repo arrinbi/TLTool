@@ -76,7 +76,18 @@ describe('OCR Geometry Extraction & Clustering Pipeline', () => {
                   bbox: { x0: 200, y0: 180, x1: 280, y1: 200 },
                   text: 'HELP!',
                   words: [
-                    { bbox: { x0: 200, y0: 180, x1: 280, y1: 200 }, text: 'HELP!', confidence: 99 },
+                    {
+                      bbox: { x0: 195, y0: 175, x1: 285, y1: 205 }, // Slightly loose word box
+                      text: 'HELP!',
+                      confidence: 99,
+                      symbols: [
+                        { bbox: { x0: 200, y0: 180, x1: 215, y1: 200 }, text: 'H' },
+                        { bbox: { x0: 216, y0: 180, x1: 230, y1: 200 }, text: 'E' },
+                        { bbox: { x0: 231, y0: 180, x1: 245, y1: 200 }, text: 'L' },
+                        { bbox: { x0: 246, y0: 180, x1: 260, y1: 200 }, text: 'P' },
+                        { bbox: { x0: 261, y0: 180, x1: 270, y1: 200 }, text: '!' },
+                      ],
+                    },
                   ],
                 },
               ],
@@ -91,9 +102,9 @@ describe('OCR Geometry Extraction & Clustering Pipeline', () => {
       expect(regions.length).toBe(1);
       const finalBox = regions[0].bbox;
 
-      // The actual text is strictly bounded at x=200..280 (width 80), y=180..200 (height 20).
-      // With padding = 2, finalBox is x: 198, y: 178, width: 84, height: 24.
-      expect(finalBox.width).toBe(84);
+      // Symbol bounds span x=200..270 (width 70), y=180..200 (height 20).
+      // Refined word box with +2px padding gives x=198, y=178, width=74, height=24.
+      expect(finalBox.width).toBe(74);
       expect(finalBox.height).toBe(24);
 
       // If paragraph/block bbox were used, width would be ~280 and height ~180.
@@ -104,6 +115,62 @@ describe('OCR Geometry Extraction & Clustering Pipeline', () => {
       expect(finalBox.height).toBeLessThan(100);
       expect(finalBox.width).not.toEqual(paragraphWidth);
       expect(finalBox.width).not.toEqual(blockWidth);
+    });
+
+    it('runtime OCR data flow regression test: extractTextUnitsFromBlocks extracts word/symbol geometry and clusterBoxes receives them', () => {
+      const mockBlocksWithBloatedParents = [
+        {
+          bbox: { x0: 10, y0: 10, x1: 800, y1: 1200 }, // Entire page block box
+          paragraphs: [
+            {
+              bbox: { x0: 20, y0: 20, x1: 780, y1: 1180 }, // Entire page paragraph box
+              lines: [
+                {
+                  bbox: { x0: 100, y0: 200, x1: 300, y1: 240 },
+                  text: 'TEST WORD',
+                  words: [
+                    {
+                      bbox: { x0: 100, y0: 200, x1: 180, y1: 240 },
+                      text: 'TEST',
+                      confidence: 95,
+                      symbols: [
+                        { bbox: { x0: 102, y0: 202, x1: 178, y1: 238 }, text: 'T' },
+                      ],
+                    },
+                    {
+                      bbox: { x0: 200, y0: 200, x1: 300, y1: 240 },
+                      text: 'WORD',
+                      confidence: 95,
+                      symbols: [
+                        { bbox: { x0: 202, y0: 202, x1: 298, y1: 238 }, text: 'W' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const rawUnits = extractTextUnitsFromBlocks(mockBlocksWithBloatedParents);
+      expect(rawUnits.length).toBe(2);
+
+      // Symbol refinement tightens unit 0 to x:102, y:202, w:76, h:36
+      expect(rawUnits[0].bbox).toEqual({ x: 102, y: 202, width: 76, height: 36 });
+      // Symbol refinement tightens unit 1 to x:202, y:202, w:96, h:36
+      expect(rawUnits[1].bbox).toEqual({ x: 202, y: 202, width: 96, height: 36 });
+
+      const regions = clusterBoxes(rawUnits);
+      expect(regions.length).toBe(1);
+
+      // Clustered box spans x=102..298 (width 196), y=202..238 (height 36).
+      // With 2px padding: x=100, y=200, width=200, height=40.
+      expect(regions[0].bbox).toEqual({ x: 100, y: 200, width: 200, height: 40 });
+
+      // Verify that bloated parent block/paragraph bounds (800x1200) are NOT used anywhere
+      expect(regions[0].bbox.width).toBeLessThan(300);
+      expect(regions[0].bbox.height).toBeLessThan(100);
     });
   });
 
