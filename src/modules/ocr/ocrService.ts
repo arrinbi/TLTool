@@ -86,17 +86,20 @@ export function areUnitsInSameRegion(item1: TextUnit, item2: TextUnit): boolean 
   // Compute scale based on average font/box height
   const avgHeight = (b1.height + b2.height) / 2;
 
-  // Adaptive thresholding:
-  // Horizontally, words on the same line are close (allow up to 2.5x font height gap)
-  // Vertically, consecutive lines in a speech bubble are separated by line spacing (allow up to 1.8x font height gap)
-  const maxHorizDist = Math.max(avgHeight * 2.5, 30);
-  const maxVertDist = Math.max(avgHeight * 1.8, 25);
-
   // Compute actual edge gaps
   const horizGap = Math.max(0, Math.max(b1.x - (b2.x + b2.width), b2.x - (b1.x + b1.width)));
   const vertGap = Math.max(0, Math.max(b1.y - (b2.y + b2.height), b2.y - (b1.y + b1.height)));
 
-  return horizGap <= maxHorizDist && vertGap <= maxVertDist;
+  // Words on the same line (minimal vertical offset)
+  const maxSameLineHoriz = Math.max(avgHeight * 2.0, 25);
+  const isSameLine = vertGap <= Math.min(avgHeight * 0.5, 10) && horizGap <= maxSameLineHoriz;
+
+  // Consecutive lines in the same speech bubble (horizontal alignment overlap)
+  const maxNextLineVert = Math.max(avgHeight * 1.4, 20);
+  const maxNextLineHoriz = Math.max(avgHeight * 1.2, 20);
+  const isNextLineInBubble = vertGap <= maxNextLineVert && horizGap <= maxNextLineHoriz;
+
+  return isSameLine || isNextLineInBubble;
 }
 
 /**

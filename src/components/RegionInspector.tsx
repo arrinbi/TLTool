@@ -107,9 +107,9 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               onChange={(e) => setCleaningMethod(e.target.value as CleaningMethod)}
               className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
-              <option value="smart-fill">Smart Fill (Border Inpaint)</option>
-              <option value="solid-white">Solid Fill Color</option>
-              <option value="border-sample">Border Average Color</option>
+              <option value="smart-fill">Smart Fill (Mask Inpaint)</option>
+              <option value="solid-white">Solid Fill Color (Mask Target)</option>
+              <option value="border-sample">Border Average Color (Mask Target)</option>
             </select>
           </div>
 
