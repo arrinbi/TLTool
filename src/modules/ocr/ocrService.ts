@@ -86,11 +86,18 @@ export function areUnitsInSameRegion(item1: TextUnit, item2: TextUnit): boolean 
   // Compute scale based on average font/box height
   const avgHeight = (b1.height + b2.height) / 2;
 
+  // Compute center vertical distance to check if items are roughly on the same line
+  const c1y = b1.y + b1.height / 2;
+  const c2y = b2.y + b2.height / 2;
+  const isSameLine = Math.abs(c1y - c2y) <= Math.min(b1.height, b2.height) * 0.6;
+
   // Adaptive thresholding:
-  // Horizontally, words on the same line are close (allow up to 2.5x font height gap)
-  // Vertically, consecutive lines in a speech bubble are separated by line spacing (allow up to 1.8x font height gap)
-  const maxHorizDist = Math.max(avgHeight * 2.5, 30);
-  const maxVertDist = Math.max(avgHeight * 1.8, 25);
+  // Horizontally, allow up to 1.5x font height (or min 20px) on the same line, but much tighter gap across lines (0.8x font height)
+  // Vertically, consecutive lines in a paragraph/bubble allow up to 1.2x font height gap (or min 18px), provided horizontal overlap exists.
+  const maxHorizDist = isSameLine
+    ? Math.max(avgHeight * 1.5, 20)
+    : Math.max(avgHeight * 0.8, 12);
+  const maxVertDist = Math.max(avgHeight * 1.2, 18);
 
   // Compute actual edge gaps
   const horizGap = Math.max(0, Math.max(b1.x - (b2.x + b2.width), b2.x - (b1.x + b1.width)));
@@ -145,8 +152,8 @@ export function clusterBoxes(
 
     const rawBbox = mergeBoxes(currentCluster.map((item) => item.bbox));
 
-    // Add minimal tight padding (3-5px) around detected text box
-    const padding = 4;
+    // Add minimal tight padding (2px) around detected text box to fit detected text tightly
+    const padding = 2;
     const combinedBbox: BoundingBox = {
       x: Math.max(0, rawBbox.x - padding),
       y: Math.max(0, rawBbox.y - padding),
