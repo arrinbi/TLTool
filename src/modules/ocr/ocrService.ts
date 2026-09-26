@@ -329,13 +329,7 @@ function createBlankCanvas(width: number, height: number): HTMLCanvasElement {
     canvas.height = height;
     return canvas;
   }
-  // Node / Vitest fallback if canvas package or global HTMLCanvasElement is present
-  try {
-    const { createCanvas } = require('canvas');
-    return createCanvas(width, height) as unknown as HTMLCanvasElement;
-  } catch {
-    throw new Error('Canvas element creation not supported in this environment');
-  }
+  throw new Error('Canvas element creation not supported in this environment');
 }
 
 /**
