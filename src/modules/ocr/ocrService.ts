@@ -1,7 +1,5 @@
 import { createWorker, PSM } from 'tesseract.js';
-import type { TextRegion, BoundingBox } from '../../types';
-
-import type { RegionCategory } from '../../types';
+import type { TextRegion, BoundingBox, RegionCategory } from '../../types';
 
 export interface OcrProgress {
   status: string;
@@ -318,6 +316,248 @@ export function clusterBoxes(
   return clusters;
 }
 
+export interface CanvasVariants {
+  standard: HTMLCanvasElement;
+  contrast: HTMLCanvasElement;
+  inverted: HTMLCanvasElement;
+}
+
+function createBlankCanvas(width: number, height: number): HTMLCanvasElement {
+  if (typeof document !== 'undefined' && document.createElement) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+  throw new Error('Canvas element creation not supported in this environment');
+}
+
+/**
+ * Helper to prepare a HTMLCanvasElement from various image sources.
+ */
+export async function prepareCanvasFromSource(
+  imageSource: string | HTMLImageElement | HTMLCanvasElement
+): Promise<HTMLCanvasElement> {
+  if (typeof HTMLCanvasElement !== 'undefined' && imageSource instanceof HTMLCanvasElement) {
+    return imageSource;
+  }
+
+  const img = new Image();
+  if (typeof imageSource === 'string') {
+    img.src = imageSource;
+  } else if (typeof HTMLImageElement !== 'undefined' && imageSource instanceof HTMLImageElement) {
+    if (imageSource.complete && imageSource.naturalWidth) {
+      const canvas = createBlankCanvas(
+        imageSource.naturalWidth || imageSource.width,
+        imageSource.naturalHeight || imageSource.height
+      );
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.drawImage(imageSource, 0, 0);
+      return canvas;
+    }
+    img.src = imageSource.src;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = reject;
+  });
+
+  const canvas = createBlankCanvas(
+    img.naturalWidth || img.width || 600,
+    img.naturalHeight || img.height || 900
+  );
+  const ctx = canvas.getContext('2d');
+  if (ctx) ctx.drawImage(img, 0, 0);
+  return canvas;
+}
+
+/**
+ * Preprocess image canvas into variants optimized for different manhwa text types:
+ * - standard: Pristine canvas for dark text on light background.
+ * - contrast: Background-lightened pass converting dark panel artwork to white so Tesseract cleanly isolates speech bubbles.
+ * - inverted: Inverted high-contrast canvas for white/light SFX and wild text over dark artwork.
+ */
+export function preprocessCanvasVariants(sourceCanvas: HTMLCanvasElement): CanvasVariants {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+
+  // 1. Standard canvas
+  const standardCanvas = createBlankCanvas(width, height);
+  const stdCtx = standardCanvas.getContext('2d');
+  if (stdCtx) stdCtx.drawImage(sourceCanvas, 0, 0);
+
+  // 2. Lightened Background / Speech Bubble Pass
+  const contrastCanvas = createBlankCanvas(width, height);
+  const cCtx = contrastCanvas.getContext('2d');
+  if (cCtx) {
+    cCtx.drawImage(sourceCanvas, 0, 0);
+    const cImgData = cCtx.getImageData(0, 0, width, height);
+    const d = cImgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      // Lighten panel artwork background pixels while preserving dark speech bubble text
+      if (lum > 20 && lum < 190) {
+        d[i] = 255;
+        d[i + 1] = 255;
+        d[i + 2] = 255;
+      }
+    }
+    cCtx.putImageData(cImgData, 0, 0);
+  }
+
+  // 3. Inverted Canvas (for white/light SFX and wild text over dark panels)
+  const invertedCanvas = createBlankCanvas(width, height);
+  const invCtx = invertedCanvas.getContext('2d');
+  if (invCtx) {
+    invCtx.drawImage(sourceCanvas, 0, 0);
+    const invImgData = invCtx.getImageData(0, 0, width, height);
+    const d = invImgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const invVal = Math.min(255, Math.max(0, (255 - lum - 128) * 1.5 + 128));
+      d[i] = invVal;
+      d[i + 1] = invVal;
+      d[i + 2] = invVal;
+    }
+    invCtx.putImageData(invImgData, 0, 0);
+  }
+
+  return {
+    standard: standardCanvas,
+    contrast: contrastCanvas,
+    inverted: invertedCanvas,
+  };
+}
+
+/**
+ * Compute spatial overlap ratio relative to the smaller bounding box area.
+ */
+export function computeOverlapRatio(b1: BoundingBox, b2: BoundingBox): number {
+  const x1 = Math.max(b1.x, b2.x);
+  const y1 = Math.max(b1.y, b2.y);
+  const x2 = Math.min(b1.x + b1.width, b2.x + b2.width);
+  const y2 = Math.min(b1.y + b1.height, b2.y + b2.height);
+
+  const interWidth = Math.max(0, x2 - x1);
+  const interHeight = Math.max(0, y2 - y1);
+  const interArea = interWidth * interHeight;
+
+  if (interArea <= 0) return 0;
+
+  const area1 = b1.width * b1.height;
+  const area2 = b2.width * b2.height;
+
+  return interArea / Math.min(area1, area2);
+}
+
+/**
+ * Deduplicate TextUnits from multi-pass OCR detections.
+ * Filters out low-confidence noise and resolves overlapping full-phrase vs. fragmented detections.
+ */
+export function deduplicateTextUnits(units: TextUnit[]): TextUnit[] {
+  if (units.length === 0) return [];
+
+  // Filter out low confidence single non-alphanumeric noise first
+  const validUnits = units.filter((u) => {
+    const textClean = u.text.trim();
+    if (!textClean) return false;
+    if (u.confidence < 35 && textClean.length === 1 && !/[a-zA-Z0-9]/.test(textClean)) {
+      return false;
+    }
+    return true;
+  });
+
+  if (validUnits.length === 0) return [];
+
+  const result: TextUnit[] = [];
+
+  // Sort units by confidence descending, then by text length descending
+  const sorted = [...validUnits].sort((a, b) => {
+    if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+    return b.text.length - a.text.length;
+  });
+
+  for (const candidate of sorted) {
+    const candArea = candidate.bbox.width * candidate.bbox.height;
+    const candTextNormalized = candidate.text.trim().toLowerCase();
+
+    // Check if candidate overlaps significantly with any existing unit or group of existing units
+    const overlappingIndices: number[] = [];
+    for (let i = 0; i < result.length; i++) {
+      const existing = result[i];
+      const overlap = computeOverlapRatio(candidate.bbox, existing.bbox);
+      if (overlap > 0.35) {
+        overlappingIndices.push(i);
+      }
+    }
+
+    if (overlappingIndices.length === 0) {
+      result.push({ ...candidate });
+      continue;
+    }
+
+    // Candidate overlaps with one or more existing units
+    if (overlappingIndices.length === 1) {
+      const existingIdx = overlappingIndices[0];
+      const existing = result[existingIdx];
+      const existTextNormalized = existing.text.trim().toLowerCase();
+
+      // Check text containment
+      const isCandSubsumed = existTextNormalized.includes(candTextNormalized) || candTextNormalized === existTextNormalized;
+      const isExistSubsumed = candTextNormalized.includes(existTextNormalized);
+
+      if (isCandSubsumed && !isExistSubsumed) {
+        // Candidate is a substring of existing (e.g., candidate "I", existing "I GUESS HE" or existing has same/longer text)
+        // Keep existing, discard candidate
+        continue;
+      } else if (isExistSubsumed && !isCandSubsumed) {
+        // Existing is a substring of candidate (e.g., existing "I", candidate "I GUESS HE")
+        // Replace existing with candidate if candidate has higher or comparable confidence,
+        // or if candidate bounding box is tighter/similar
+        result[existingIdx] = { ...candidate };
+        continue;
+      } else {
+        // Text is not simple substring of each other, but they spatially overlap > 35%
+        // Keep the one with higher confidence, or if equal confidence, smaller bbox area (tighter)
+        if (
+          candidate.confidence > existing.confidence + 10 ||
+          (Math.abs(candidate.confidence - existing.confidence) <= 10 && candArea < existing.bbox.width * existing.bbox.height)
+        ) {
+          result[existingIdx] = { ...candidate };
+        }
+        continue;
+      }
+    }
+
+    // Candidate overlaps with MULTIPLE existing units (e.g. candidate "I GUESS HE" vs existing "I", "GUESS", "HE")
+    let allFragmentsContainedInCandidate = true;
+    for (const idx of overlappingIndices) {
+      const exText = result[idx].text.trim().toLowerCase();
+      if (!candTextNormalized.includes(exText)) {
+        allFragmentsContainedInCandidate = false;
+        break;
+      }
+    }
+
+    if (allFragmentsContainedInCandidate) {
+      // Candidate text encompasses all overlapping existing fragments
+      const avgExistConf =
+        overlappingIndices.reduce((sum, idx) => sum + result[idx].confidence, 0) / overlappingIndices.length;
+      if (candidate.confidence >= avgExistConf - 5) {
+        // Remove all overlapping existing fragments and add candidate
+        overlappingIndices.sort((a, b) => b - a);
+        for (const idx of overlappingIndices) {
+          result.splice(idx, 1);
+        }
+        result.push({ ...candidate });
+      }
+    }
+  }
+
+  return result;
+}
+
 /**
  * Primary OCR & Detection runner.
  */
@@ -326,48 +566,44 @@ export async function detectTextRegions(
   onProgress?: (progress: OcrProgress) => void
 ): Promise<TextRegion[]> {
   try {
-    if (onProgress) onProgress({ status: 'Initializing OCR Engine...', progress: 0.1 });
+    if (onProgress) onProgress({ status: 'Preparing canvas and image passes...', progress: 0.1 });
+
+    const sourceCanvas = await prepareCanvasFromSource(imageSource);
+    const variants = preprocessCanvasVariants(sourceCanvas);
+
+    if (onProgress) onProgress({ status: 'Initializing OCR Engine...', progress: 0.2 });
 
     const worker = await createWorker('eng');
-
-    if (onProgress) onProgress({ status: 'Analyzing image layout & text...', progress: 0.4 });
-
-    // Use page segmentation mode SPARSE_TEXT (11) for detecting floating text / bubbles on comic pages
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
     });
 
-    // In Tesseract.js v7, passing { blocks: true } as the 3rd argument populates layout data
-    const ret = await worker.recognize(imageSource, {}, { blocks: true });
+    const allRawUnits: TextUnit[] = [];
 
-    if (onProgress) onProgress({ status: 'Processing text blocks...', progress: 0.8 });
+    // Pass 1: Standard Pass
+    if (onProgress) onProgress({ status: 'Analyzing standard speech bubble text...', progress: 0.35 });
+    const retStd = await worker.recognize(variants.standard, {}, { blocks: true });
+    const dataStd = retStd.data as { blocks?: Array<any> };
+    allRawUnits.push(...extractTextUnitsFromBlocks(dataStd.blocks));
 
-    const data = ret.data as {
-      blocks?: Array<{
-        bbox?: { x0: number; y0: number; x1: number; y1: number };
-        paragraphs?: Array<{
-          bbox?: { x0: number; y0: number; x1: number; y1: number };
-          lines?: Array<{
-            bbox?: { x0: number; y0: number; x1: number; y1: number };
-            text?: string;
-            confidence?: number;
-            words?: Array<{
-              bbox: { x0: number; y0: number; x1: number; y1: number };
-              text: string;
-              confidence: number;
-            }>;
-          }>;
-        }>;
-      }>;
-    };
+    // Pass 2: Contrast-Enhanced Pass
+    if (onProgress) onProgress({ status: 'Analyzing low-contrast text regions...', progress: 0.55 });
+    const retContrast = await worker.recognize(variants.contrast, {}, { blocks: true });
+    const dataContrast = retContrast.data as { blocks?: Array<any> };
+    allRawUnits.push(...extractTextUnitsFromBlocks(dataContrast.blocks));
 
-    const rawUnits = extractTextUnitsFromBlocks(data.blocks);
+    // Pass 3: Inverted Pass (for white SFX and wild text over dark artwork)
+    if (onProgress) onProgress({ status: 'Analyzing stylized SFX and wild text...', progress: 0.75 });
+    const retInv = await worker.recognize(variants.inverted, {}, { blocks: true });
+    const dataInv = retInv.data as { blocks?: Array<any> };
+    allRawUnits.push(...extractTextUnitsFromBlocks(dataInv.blocks));
 
     await worker.terminate();
 
-    if (onProgress) onProgress({ status: 'Clustering text regions...', progress: 0.95 });
+    if (onProgress) onProgress({ status: 'Deduplicating and clustering text regions...', progress: 0.90 });
 
-    const regions = clusterBoxes(rawUnits);
+    const deduplicated = deduplicateTextUnits(allRawUnits);
+    const regions = clusterBoxes(deduplicated);
 
     if (onProgress) onProgress({ status: 'Done', progress: 1.0 });
 
