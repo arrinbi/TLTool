@@ -74,7 +74,126 @@ export type TextUnit = {
   bbox: BoundingBox;
   text: string;
   confidence: number;
+  // Optional debug metadata preserved from raw OCR output for inspection/troubleshooting
+  debugMeta?: {
+    lineBbox?: BoundingBox;
+    paragraphBbox?: BoundingBox;
+    blockBbox?: BoundingBox;
+  };
 };
+
+/**
+ * Extract word/line-level TextUnits from Tesseract v7 layout block hierarchy.
+ * Prioritizes word-level geometry ('word.bbox') over paragraph or block geometry.
+ */
+export function extractTextUnitsFromBlocks(blocks?: Array<{
+  bbox?: { x0: number; y0: number; x1: number; y1: number };
+  paragraphs?: Array<{
+    bbox?: { x0: number; y0: number; x1: number; y1: number };
+    lines?: Array<{
+      bbox?: { x0: number; y0: number; x1: number; y1: number };
+      text?: string;
+      confidence?: number;
+      words?: Array<{
+        bbox: { x0: number; y0: number; x1: number; y1: number };
+        text: string;
+        confidence: number;
+      }>;
+    }>;
+  }>;
+}>): TextUnit[] {
+  const rawUnits: TextUnit[] = [];
+  if (!blocks || blocks.length === 0) return rawUnits;
+
+  for (const block of blocks) {
+    const blockBbox = block.bbox
+      ? { x: block.bbox.x0, y: block.bbox.y0, width: block.bbox.x1 - block.bbox.x0, height: block.bbox.y1 - block.bbox.y0 }
+      : undefined;
+
+    if (!block.paragraphs) continue;
+    for (const para of block.paragraphs) {
+      const paragraphBbox = para.bbox
+        ? { x: para.bbox.x0, y: para.bbox.y0, width: para.bbox.x1 - para.bbox.x0, height: para.bbox.y1 - para.bbox.y0 }
+        : undefined;
+
+      if (!para.lines) continue;
+      for (const line of para.lines) {
+        const lineBbox = line.bbox
+          ? { x: line.bbox.x0, y: line.bbox.y0, width: line.bbox.x1 - line.bbox.x0, height: line.bbox.y1 - line.bbox.y0 }
+          : undefined;
+
+        if (line.words && line.words.length > 0) {
+          for (const word of line.words) {
+            const text = word.text ? word.text.trim() : '';
+            if (!text) continue;
+
+            let b = word.bbox;
+            // Refine word bounding box using symbol bounding boxes if available
+            const wordWithSymbols = word as typeof word & {
+              symbols?: Array<{ bbox?: { x0: number; y0: number; x1: number; y1: number }; text?: string }>;
+            };
+            if (wordWithSymbols.symbols && wordWithSymbols.symbols.length > 0) {
+              let symMinX = Infinity, symMinY = Infinity, symMaxX = -Infinity, symMaxY = -Infinity;
+              let hasValidSym = false;
+              for (const sym of wordWithSymbols.symbols) {
+                if (!sym.bbox) continue;
+                if (sym.bbox.x1 > sym.bbox.x0 && sym.bbox.y1 > sym.bbox.y0) {
+                  symMinX = Math.min(symMinX, sym.bbox.x0);
+                  symMinY = Math.min(symMinY, sym.bbox.y0);
+                  symMaxX = Math.max(symMaxX, sym.bbox.x1);
+                  symMaxY = Math.max(symMaxY, sym.bbox.y1);
+                  hasValidSym = true;
+                }
+              }
+              if (hasValidSym) {
+                b = { x0: symMinX, y0: symMinY, x1: symMaxX, y1: symMaxY };
+              }
+            }
+
+            if (!b) continue;
+            const width = b.x1 - b.x0;
+            const height = b.y1 - b.y0;
+
+            if (width < 3 || height < 3) continue;
+
+            rawUnits.push({
+              bbox: { x: b.x0, y: b.y0, width, height },
+              text,
+              confidence: word.confidence ?? 80,
+              debugMeta: {
+                lineBbox,
+                paragraphBbox,
+                blockBbox,
+              },
+            });
+          }
+        } else if (line.text && line.bbox) {
+          // Fallback to line box if word-level data is missing for a line
+          const text = line.text.trim();
+          if (text) {
+            const b = line.bbox;
+            const width = b.x1 - b.x0;
+            const height = b.y1 - b.y0;
+            if (width >= 3 && height >= 3) {
+              rawUnits.push({
+                bbox: { x: b.x0, y: b.y0, width, height },
+                text,
+                confidence: line.confidence ?? 80,
+                debugMeta: {
+                  lineBbox,
+                  paragraphBbox,
+                  blockBbox,
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return rawUnits;
+}
 
 /**
  * Check if two text items (words/lines) belong to the same text region using adaptive vertical/horizontal proximity metrics.
@@ -223,69 +342,26 @@ export async function detectTextRegions(
 
     if (onProgress) onProgress({ status: 'Processing text blocks...', progress: 0.8 });
 
-    const rawUnits: TextUnit[] = [];
-
-    // Extract word-level bounding boxes from Tesseract layout output
     const data = ret.data as {
       blocks?: Array<{
+        bbox?: { x0: number; y0: number; x1: number; y1: number };
         paragraphs?: Array<{
+          bbox?: { x0: number; y0: number; x1: number; y1: number };
           lines?: Array<{
+            bbox?: { x0: number; y0: number; x1: number; y1: number };
+            text?: string;
+            confidence?: number;
             words?: Array<{
               bbox: { x0: number; y0: number; x1: number; y1: number };
               text: string;
               confidence: number;
             }>;
-            bbox?: { x0: number; y0: number; x1: number; y1: number };
-            text?: string;
-            confidence?: number;
           }>;
         }>;
       }>;
     };
 
-    if (data.blocks && data.blocks.length > 0) {
-      for (const block of data.blocks) {
-        if (!block.paragraphs) continue;
-        for (const para of block.paragraphs) {
-          if (!para.lines) continue;
-          for (const line of para.lines) {
-            if (line.words && line.words.length > 0) {
-              for (const word of line.words) {
-                const text = word.text ? word.text.trim() : '';
-                if (!text) continue;
-                const b = word.bbox;
-                if (!b) continue;
-                const width = b.x1 - b.x0;
-                const height = b.y1 - b.y0;
-
-                if (width < 3 || height < 3) continue;
-
-                rawUnits.push({
-                  bbox: { x: b.x0, y: b.y0, width, height },
-                  text,
-                  confidence: word.confidence ?? 80,
-                });
-              }
-            } else if (line.text && line.bbox) {
-              // Fallback to line box if word-level data is missing for a line
-              const text = line.text.trim();
-              if (text) {
-                const b = line.bbox;
-                const width = b.x1 - b.x0;
-                const height = b.y1 - b.y0;
-                if (width >= 3 && height >= 3) {
-                  rawUnits.push({
-                    bbox: { x: b.x0, y: b.y0, width, height },
-                    text,
-                    confidence: line.confidence ?? 80,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    const rawUnits = extractTextUnitsFromBlocks(data.blocks);
 
     await worker.terminate();
 
