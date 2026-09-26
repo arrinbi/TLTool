@@ -7,12 +7,15 @@ export interface BoundingBox {
 
 export type CleaningMethod = 'smart-fill' | 'solid-white' | 'border-sample' | 'brush';
 
+export type RegionCategory = 'bubble-oval' | 'bubble-rect' | 'text-outside' | 'sfx';
+
 export interface TextRegion {
   id: string;
   bbox: BoundingBox;
   text: string;
   confidence: number; // 0 to 100
   isCleaned: boolean;
+  category?: RegionCategory;
   cleaningMethod?: CleaningMethod;
   originalText?: string;
   // Future module placeholders:

@@ -157,6 +157,26 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               </button>
             </div>
 
+            {/* Region Type / Category Selector */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] text-slate-400 font-medium">Region Category</label>
+              <select
+                value={selectedRegion.category || 'bubble-oval'}
+                onChange={(e) =>
+                  onUpdateRegion({
+                    ...selectedRegion,
+                    category: e.target.value as any,
+                  })
+                }
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="bubble-oval">Bubble (Oval / Round)</option>
+                <option value="bubble-rect">Bubble (Square / Box)</option>
+                <option value="text-outside">Floating Text (Outside Bubble)</option>
+                <option value="sfx">SFX (Sound Effects)</option>
+              </select>
+            </div>
+
             {/* Region Text Content */}
             <div className="flex flex-col gap-1">
               <label className="text-[11px] text-slate-400 font-medium">Detected Text</label>

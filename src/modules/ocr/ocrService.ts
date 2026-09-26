@@ -1,9 +1,33 @@
-import { createWorker } from 'tesseract.js';
+import { createWorker, PSM } from 'tesseract.js';
 import type { TextRegion, BoundingBox } from '../../types';
+
+import type { RegionCategory } from '../../types';
 
 export interface OcrProgress {
   status: string;
   progress: number;
+}
+
+/**
+ * Heuristically classify region category based on text content, box dimensions, and aspect ratio.
+ */
+export function classifyRegionCategory(bbox: BoundingBox, text: string): RegionCategory {
+  const isShortText = text.trim().length <= 15 && !text.includes('\n');
+  const isLargeOrWide = bbox.width > 150 || bbox.height > 60;
+  const isExclamation = text.includes('!') || text.includes('?');
+
+  if (isShortText && isLargeOrWide && isExclamation) {
+    return 'sfx';
+  }
+
+  const aspectRatio = bbox.width / Math.max(1, bbox.height);
+  if (aspectRatio > 0.8 && aspectRatio < 2.5) {
+    return 'bubble-oval';
+  } else if (aspectRatio >= 2.5) {
+    return 'bubble-rect';
+  }
+
+  return 'text-outside';
 }
 
 /**
@@ -46,12 +70,41 @@ export function mergeBoxes(boxes: BoundingBox[]): BoundingBox {
   };
 }
 
+export type TextUnit = {
+  bbox: BoundingBox;
+  text: string;
+  confidence: number;
+};
+
 /**
- * Cluster line/word boxes into paragraph / bubble regions based on proximity.
+ * Check if two text items (words/lines) belong to the same text region using adaptive vertical/horizontal proximity metrics.
+ */
+export function areUnitsInSameRegion(item1: TextUnit, item2: TextUnit): boolean {
+  const b1 = item1.bbox;
+  const b2 = item2.bbox;
+
+  // Compute scale based on average font/box height
+  const avgHeight = (b1.height + b2.height) / 2;
+
+  // Adaptive thresholding:
+  // Horizontally, words on the same line are close (allow up to 2.5x font height gap)
+  // Vertically, consecutive lines in a speech bubble are separated by line spacing (allow up to 1.8x font height gap)
+  const maxHorizDist = Math.max(avgHeight * 2.5, 30);
+  const maxVertDist = Math.max(avgHeight * 1.8, 25);
+
+  // Compute actual edge gaps
+  const horizGap = Math.max(0, Math.max(b1.x - (b2.x + b2.width), b2.x - (b1.x + b1.width)));
+  const vertGap = Math.max(0, Math.max(b1.y - (b2.y + b2.height), b2.y - (b1.y + b1.height)));
+
+  return horizGap <= maxHorizDist && vertGap <= maxVertDist;
+}
+
+/**
+ * Cluster line/word boxes into speech bubble / text regions using adaptive relative distance.
  */
 export function clusterBoxes(
-  items: { bbox: BoundingBox; text: string; confidence: number }[],
-  margin: number = 25
+  items: TextUnit[],
+  _legacyMargin: number = 25
 ): TextRegion[] {
   if (items.length === 0) return [];
 
@@ -61,7 +114,7 @@ export function clusterBoxes(
   for (let i = 0; i < items.length; i++) {
     if (visited.has(i)) continue;
 
-    const currentCluster: typeof items = [items[i]];
+    const currentCluster: TextUnit[] = [items[i]];
     visited.add(i);
 
     let addedNew = true;
@@ -70,23 +123,59 @@ export function clusterBoxes(
       for (let j = 0; j < items.length; j++) {
         if (visited.has(j)) continue;
 
-        const isNear = currentCluster.some((cItem) => areBoxesNear(cItem.bbox, items[j].bbox, margin));
+        const candidate = items[j];
+        const isNear = currentCluster.some((cItem) => areUnitsInSameRegion(cItem, candidate));
+
         if (isNear) {
-          currentCluster.push(items[j]);
+          currentCluster.push(candidate);
           visited.add(j);
           addedNew = true;
         }
       }
     }
 
+    // Sort items vertically then horizontally to re-construct readable multiline text
     currentCluster.sort((a, b) => {
       const yDiff = a.bbox.y - b.bbox.y;
-      if (Math.abs(yDiff) > 15) return yDiff;
+      if (Math.abs(yDiff) > Math.min(a.bbox.height, b.bbox.height) * 0.6) {
+        return yDiff;
+      }
       return a.bbox.x - b.bbox.x;
     });
 
-    const combinedBbox = mergeBoxes(currentCluster.map((item) => item.bbox));
-    const combinedText = currentCluster.map((item) => item.text.trim()).filter(Boolean).join('\n');
+    const rawBbox = mergeBoxes(currentCluster.map((item) => item.bbox));
+
+    // Add minimal tight padding (3-5px) around detected text box
+    const padding = 4;
+    const combinedBbox: BoundingBox = {
+      x: Math.max(0, rawBbox.x - padding),
+      y: Math.max(0, rawBbox.y - padding),
+      width: rawBbox.width + padding * 2,
+      height: rawBbox.height + padding * 2,
+    };
+
+    // Group items into lines
+    const lines: string[] = [];
+    let currentLine: TextUnit[] = [];
+
+    for (const item of currentCluster) {
+      if (currentLine.length === 0) {
+        currentLine.push(item);
+      } else {
+        const last = currentLine[currentLine.length - 1];
+        if (Math.abs(item.bbox.y - last.bbox.y) <= Math.min(item.bbox.height, last.bbox.height) * 0.6) {
+          currentLine.push(item);
+        } else {
+          lines.push(currentLine.map((w) => w.text.trim()).join(' '));
+          currentLine = [item];
+        }
+      }
+    }
+    if (currentLine.length > 0) {
+      lines.push(currentLine.map((w) => w.text.trim()).join(' '));
+    }
+
+    const combinedText = lines.join('\n');
     const avgConfidence =
       currentCluster.reduce((sum, item) => sum + item.confidence, 0) / currentCluster.length;
 
@@ -95,6 +184,7 @@ export function clusterBoxes(
       bbox: combinedBbox,
       text: combinedText,
       confidence: Math.round(avgConfidence),
+      category: classifyRegionCategory(combinedBbox, combinedText),
       isCleaned: false,
     });
   }
@@ -116,76 +206,77 @@ export async function detectTextRegions(
 
     if (onProgress) onProgress({ status: 'Analyzing image layout & text...', progress: 0.4 });
 
-    // In Tesseract.js v7, passing { blocks: true } as the 3rd argument is required to populate block/layout data
+    // Use page segmentation mode SPARSE_TEXT (11) for detecting floating text / bubbles on comic pages
+    await worker.setParameters({
+      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+    });
+
+    // In Tesseract.js v7, passing { blocks: true } as the 3rd argument populates layout data
     const ret = await worker.recognize(imageSource, {}, { blocks: true });
 
     if (onProgress) onProgress({ status: 'Processing text blocks...', progress: 0.8 });
 
-    const rawItems: { bbox: BoundingBox; text: string; confidence: number }[] = [];
+    const rawUnits: TextUnit[] = [];
 
-    // Extract blocks/lines from Tesseract data
+    // Extract word-level bounding boxes from Tesseract layout output
     const data = ret.data as {
       blocks?: Array<{
         paragraphs?: Array<{
           lines?: Array<{
-            bbox: { x0: number; y0: number; x1: number; y1: number };
-            text: string;
-            confidence: number;
+            words?: Array<{
+              bbox: { x0: number; y0: number; x1: number; y1: number };
+              text: string;
+              confidence: number;
+            }>;
+            bbox?: { x0: number; y0: number; x1: number; y1: number };
+            text?: string;
+            confidence?: number;
           }>;
         }>;
-        lines?: Array<{
-          bbox: { x0: number; y0: number; x1: number; y1: number };
-          text: string;
-          confidence: number;
-        }>;
       }>;
-      lines?: Array<{
-        bbox: { x0: number; y0: number; x1: number; y1: number };
-        text: string;
-        confidence: number;
-      }>;
-    };
-
-    const addLine = (line: {
-      bbox: { x0: number; y0: number; x1: number; y1: number };
-      text: string;
-      confidence: number;
-    }) => {
-      if (!line || !line.text || line.text.trim().length === 0) return;
-      const b = line.bbox;
-      if (!b) return;
-      const width = b.x1 - b.x0;
-      const height = b.y1 - b.y0;
-
-      if (width < 5 || height < 5) return;
-
-      rawItems.push({
-        bbox: { x: b.x0, y: b.y0, width, height },
-        text: line.text,
-        confidence: line.confidence ?? 80,
-      });
     };
 
     if (data.blocks && data.blocks.length > 0) {
       for (const block of data.blocks) {
-        if (block.paragraphs) {
-          for (const para of block.paragraphs) {
-            if (para.lines) {
-              for (const line of para.lines) {
-                addLine(line);
+        if (!block.paragraphs) continue;
+        for (const para of block.paragraphs) {
+          if (!para.lines) continue;
+          for (const line of para.lines) {
+            if (line.words && line.words.length > 0) {
+              for (const word of line.words) {
+                const text = word.text ? word.text.trim() : '';
+                if (!text) continue;
+                const b = word.bbox;
+                if (!b) continue;
+                const width = b.x1 - b.x0;
+                const height = b.y1 - b.y0;
+
+                if (width < 3 || height < 3) continue;
+
+                rawUnits.push({
+                  bbox: { x: b.x0, y: b.y0, width, height },
+                  text,
+                  confidence: word.confidence ?? 80,
+                });
+              }
+            } else if (line.text && line.bbox) {
+              // Fallback to line box if word-level data is missing for a line
+              const text = line.text.trim();
+              if (text) {
+                const b = line.bbox;
+                const width = b.x1 - b.x0;
+                const height = b.y1 - b.y0;
+                if (width >= 3 && height >= 3) {
+                  rawUnits.push({
+                    bbox: { x: b.x0, y: b.y0, width, height },
+                    text,
+                    confidence: line.confidence ?? 80,
+                  });
+                }
               }
             }
           }
         }
-        if (block.lines) {
-          for (const line of block.lines) {
-            addLine(line);
-          }
-        }
-      }
-    } else if (data.lines) {
-      for (const line of data.lines) {
-        addLine(line);
       }
     }
 
@@ -193,7 +284,7 @@ export async function detectTextRegions(
 
     if (onProgress) onProgress({ status: 'Clustering text regions...', progress: 0.95 });
 
-    const regions = clusterBoxes(rawItems, 30);
+    const regions = clusterBoxes(rawUnits);
 
     if (onProgress) onProgress({ status: 'Done', progress: 1.0 });
 
