@@ -1,7 +1,5 @@
 import { createWorker, PSM } from 'tesseract.js';
-import type { TextRegion, BoundingBox } from '../../types';
-
-import type { RegionCategory } from '../../types';
+import type { TextRegion, BoundingBox, RegionCategory } from '../../types';
 
 export interface OcrProgress {
   status: string;
@@ -101,7 +99,7 @@ export function extractTextUnitsFromBlocks(blocks?: Array<{
       }>;
     }>;
   }>;
-}>): TextUnit[] {
+}> | null): TextUnit[] {
   const rawUnits: TextUnit[] = [];
   if (!blocks || blocks.length === 0) return rawUnits;
 
@@ -319,6 +317,185 @@ export function clusterBoxes(
 }
 
 /**
+ * Prepare an HTMLCanvasElement from various image sources.
+ */
+export async function prepareCanvasFromSource(
+  imageSource: string | HTMLImageElement | HTMLCanvasElement
+): Promise<HTMLCanvasElement> {
+  if (typeof window === 'undefined') {
+    throw new Error('Canvas execution requires a DOM environment');
+  }
+
+  if (imageSource instanceof HTMLCanvasElement) {
+    return imageSource;
+  }
+
+  if (imageSource instanceof HTMLImageElement) {
+    if (!imageSource.complete) {
+      await new Promise<void>((resolve, reject) => {
+        imageSource.onload = () => resolve();
+        imageSource.onerror = (e) => reject(e);
+      });
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = imageSource.naturalWidth || imageSource.width;
+    canvas.height = imageSource.naturalHeight || imageSource.height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(imageSource, 0, 0);
+    }
+    return canvas;
+  }
+
+  if (typeof imageSource === 'string') {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+        }
+        resolve(canvas);
+      };
+      img.onerror = (err) => reject(err);
+      img.src = imageSource;
+    });
+  }
+
+  throw new Error('Unsupported image source type');
+}
+
+/**
+ * Preprocess image canvas into standard, contrast-enhanced, and inverted variants for multi-pass OCR.
+ */
+export function preprocessCanvasVariants(sourceCanvas: HTMLCanvasElement): {
+  standard: HTMLCanvasElement;
+  contrast: HTMLCanvasElement;
+  inverted: HTMLCanvasElement;
+} {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+
+  // Standard variant
+  const standard = document.createElement('canvas');
+  standard.width = width;
+  standard.height = height;
+  const stdCtx = standard.getContext('2d');
+  if (stdCtx) {
+    stdCtx.drawImage(sourceCanvas, 0, 0);
+  }
+
+  // Contrast variant
+  const contrast = document.createElement('canvas');
+  contrast.width = width;
+  contrast.height = height;
+  const contrastCtx = contrast.getContext('2d');
+  if (contrastCtx) {
+    contrastCtx.drawImage(sourceCanvas, 0, 0);
+    const imgData = contrastCtx.getImageData(0, 0, width, height);
+    const d = imgData.data;
+    const contrastVal = 50;
+    const factor = (255 * (contrastVal + 255)) / (255 * (255 - contrastVal));
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = Math.min(255, Math.max(0, factor * (d[i] - 128) + 128));
+      d[i + 1] = Math.min(255, Math.max(0, factor * (d[i + 1] - 128) + 128));
+      d[i + 2] = Math.min(255, Math.max(0, factor * (d[i + 2] - 128) + 128));
+    }
+    contrastCtx.putImageData(imgData, 0, 0);
+  }
+
+  // Inverted variant
+  const inverted = document.createElement('canvas');
+  inverted.width = width;
+  inverted.height = height;
+  const invertedCtx = inverted.getContext('2d');
+  if (invertedCtx) {
+    invertedCtx.drawImage(sourceCanvas, 0, 0);
+    const imgData = invertedCtx.getImageData(0, 0, width, height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = 255 - d[i];
+      d[i + 1] = 255 - d[i + 1];
+      d[i + 2] = 255 - d[i + 2];
+    }
+    invertedCtx.putImageData(imgData, 0, 0);
+  }
+
+  return { standard, contrast, inverted };
+}
+
+/**
+ * Calculate Intersection over Union (IoU) of two bounding boxes.
+ */
+export function calculateIoU(box1: BoundingBox, box2: BoundingBox): number {
+  const xMin = Math.max(box1.x, box2.x);
+  const yMin = Math.max(box1.y, box2.y);
+  const xMax = Math.min(box1.x + box1.width, box2.x + box2.width);
+  const yMax = Math.min(box1.y + box1.height, box2.y + box2.height);
+
+  const interWidth = Math.max(0, xMax - xMin);
+  const interHeight = Math.max(0, yMax - yMin);
+  const interArea = interWidth * interHeight;
+
+  if (interArea === 0) return 0;
+
+  const area1 = box1.width * box1.height;
+  const area2 = box2.width * box2.height;
+  const unionArea = area1 + area2 - interArea;
+
+  return unionArea > 0 ? interArea / unionArea : 0;
+}
+
+/**
+ * Deduplicate text units across multi-pass OCR detections using spatial subsumption & IoU.
+ */
+export function deduplicateTextUnits(units: TextUnit[]): TextUnit[] {
+  if (units.length <= 1) return units;
+
+  const sorted = [...units].sort((a, b) => {
+    if (b.confidence !== a.confidence) {
+      return b.confidence - a.confidence;
+    }
+    return b.text.length - a.text.length;
+  });
+
+  const result: TextUnit[] = [];
+
+  for (const candidate of sorted) {
+    let isDuplicate = false;
+    for (const existing of result) {
+      const iou = calculateIoU(candidate.bbox, existing.bbox);
+
+      const minArea = Math.min(
+        candidate.bbox.width * candidate.bbox.height,
+        existing.bbox.width * existing.bbox.height
+      );
+      const xMin = Math.max(candidate.bbox.x, existing.bbox.x);
+      const yMin = Math.max(candidate.bbox.y, existing.bbox.y);
+      const xMax = Math.min(candidate.bbox.x + candidate.bbox.width, existing.bbox.x + existing.bbox.width);
+      const yMax = Math.min(candidate.bbox.y + candidate.bbox.height, existing.bbox.y + existing.bbox.height);
+      const interArea = Math.max(0, xMax - xMin) * Math.max(0, yMax - yMin);
+      const overlapRatio = minArea > 0 ? interArea / minArea : 0;
+
+      if (iou > 0.5 || overlapRatio > 0.8) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      result.push(candidate);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Primary OCR & Detection runner.
  */
 export async function detectTextRegions(
@@ -326,51 +503,45 @@ export async function detectTextRegions(
   onProgress?: (progress: OcrProgress) => void
 ): Promise<TextRegion[]> {
   try {
-    if (onProgress) onProgress({ status: 'Initializing OCR Engine...', progress: 0.1 });
+    if (onProgress) onProgress({ status: 'Preparing image canvas...', progress: 0.1 });
+    const sourceCanvas = await prepareCanvasFromSource(imageSource);
 
+    if (onProgress) onProgress({ status: 'Generating image preprocessing variants...', progress: 0.2 });
+    const variants = preprocessCanvasVariants(sourceCanvas);
+
+    if (onProgress) onProgress({ status: 'Initializing OCR Engine...', progress: 0.3 });
     const worker = await createWorker('eng');
 
-    if (onProgress) onProgress({ status: 'Analyzing image layout & text...', progress: 0.4 });
-
-    // Use page segmentation mode SPARSE_TEXT (11) for detecting floating text / bubbles on comic pages
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
     });
 
-    // In Tesseract.js v7, passing { blocks: true } as the 3rd argument populates layout data
-    const ret = await worker.recognize(imageSource, {}, { blocks: true });
+    const allRawUnits: TextUnit[] = [];
 
-    if (onProgress) onProgress({ status: 'Processing text blocks...', progress: 0.8 });
+    // Pass 1: Standard variant
+    if (onProgress) onProgress({ status: 'OCR Pass 1/3 (Standard)...', progress: 0.4 });
+    const resStd = await worker.recognize(variants.standard, {}, { blocks: true });
+    allRawUnits.push(...extractTextUnitsFromBlocks(resStd.data.blocks));
 
-    const data = ret.data as {
-      blocks?: Array<{
-        bbox?: { x0: number; y0: number; x1: number; y1: number };
-        paragraphs?: Array<{
-          bbox?: { x0: number; y0: number; x1: number; y1: number };
-          lines?: Array<{
-            bbox?: { x0: number; y0: number; x1: number; y1: number };
-            text?: string;
-            confidence?: number;
-            words?: Array<{
-              bbox: { x0: number; y0: number; x1: number; y1: number };
-              text: string;
-              confidence: number;
-            }>;
-          }>;
-        }>;
-      }>;
-    };
+    // Pass 2: Contrast variant
+    if (onProgress) onProgress({ status: 'OCR Pass 2/3 (Contrast)...', progress: 0.6 });
+    const resContrast = await worker.recognize(variants.contrast, {}, { blocks: true });
+    allRawUnits.push(...extractTextUnitsFromBlocks(resContrast.data.blocks));
 
-    const rawUnits = extractTextUnitsFromBlocks(data.blocks);
+    // Pass 3: Inverted variant
+    if (onProgress) onProgress({ status: 'OCR Pass 3/3 (Inverted)...', progress: 0.8 });
+    const resInverted = await worker.recognize(variants.inverted, {}, { blocks: true });
+    allRawUnits.push(...extractTextUnitsFromBlocks(resInverted.data.blocks));
 
     await worker.terminate();
 
-    if (onProgress) onProgress({ status: 'Clustering text regions...', progress: 0.95 });
+    if (onProgress) onProgress({ status: 'Deduplicating detected text units...', progress: 0.9 });
+    const deduplicatedUnits = deduplicateTextUnits(allRawUnits);
 
-    const regions = clusterBoxes(rawUnits);
+    if (onProgress) onProgress({ status: 'Clustering text regions...', progress: 0.95 });
+    const regions = clusterBoxes(deduplicatedUnits);
 
     if (onProgress) onProgress({ status: 'Done', progress: 1.0 });
-
     return regions;
   } catch (err) {
     console.warn('Tesseract OCR error or worker fallback:', err);
