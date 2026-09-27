@@ -43,13 +43,18 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     return { x, y };
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
     if (isDrawingMode) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback if setPointerCapture is not supported in environment
+      }
       setIsDrawing(true);
       const imgPos = screenToImage(clickX, clickY);
       setDrawStart(imgPos);
@@ -60,7 +65,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDrawing || !containerRef.current || !drawStart) return;
     const rect = containerRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
@@ -68,16 +73,41 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     setDrawCurrent(screenToImage(clickX, clickY));
   };
 
-  const handleMouseUp = () => {
-    if (isDrawing && drawStart && drawCurrent) {
-      const minX = Math.min(drawStart.x, drawCurrent.x);
-      const minY = Math.min(drawStart.y, drawCurrent.y);
-      const width = Math.abs(drawCurrent.x - drawStart.x);
-      const height = Math.abs(drawCurrent.y - drawStart.y);
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDrawing) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore fallback
+      }
 
-      // Only create if box has a minimum size
-      if (width > 10 && height > 10) {
-        onAddRegion({ x: minX, y: minY, width, height }, manualCategory);
+      if (drawStart && drawCurrent) {
+        const minX = Math.min(drawStart.x, drawCurrent.x);
+        const minY = Math.min(drawStart.y, drawCurrent.y);
+        const width = Math.abs(drawCurrent.x - drawStart.x);
+        const height = Math.abs(drawCurrent.y - drawStart.y);
+
+        // Only create if box has a minimum size
+        if (width > 10 && height > 10) {
+          onAddRegion({ x: minX, y: minY, width, height }, manualCategory);
+        }
+      }
+    }
+    setIsDrawing(false);
+    setDrawStart(null);
+    setDrawCurrent(null);
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDrawing) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore fallback
       }
     }
     setIsDrawing(false);
@@ -89,12 +119,13 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     <div
       ref={containerRef}
       className={`absolute inset-0 z-10 ${
-        isDrawingMode ? 'cursor-crosshair' : 'cursor-default'
+        isDrawingMode ? 'cursor-crosshair touch-none' : 'cursor-default'
       }`}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      style={{ width: displayWidth, height: displayHeight }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      style={{ width: displayWidth, height: displayHeight, touchAction: isDrawingMode ? 'none' : 'auto' }}
     >
       {/* Existing Regions */}
       {regions.map((region) => {
