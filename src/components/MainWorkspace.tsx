@@ -28,23 +28,30 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-  const [displaySize, setDisplaySize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [containerWidth, setContainerWidth] = useState<number>(720);
 
-  // Update display dimensions on window resize or page load
+  // Measure workspace container width for responsive fit-width scaling
   useEffect(() => {
-    const updateDimensions = () => {
-      if (imageRef.current) {
-        setDisplaySize({
-          width: imageRef.current.clientWidth,
-          height: imageRef.current.clientHeight,
-        });
+    const updateContainerWidth = () => {
+      if (workspaceRef.current) {
+        // Subtract padding (32px)
+        const width = Math.max(280, workspaceRef.current.clientWidth - 32);
+        setContainerWidth(width);
       }
     };
 
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, [page, viewMode, zoom]);
+    updateContainerWidth();
+    const resizeObserver = new ResizeObserver(updateContainerWidth);
+    if (workspaceRef.current) {
+      resizeObserver.observe(workspaceRef.current);
+    }
+    window.addEventListener('resize', updateContainerWidth);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateContainerWidth);
+    };
+  }, []);
 
   const handleSplitMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDraggingSplit.current || !workspaceRef.current) return;
@@ -71,6 +78,12 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
       </main>
     );
   }
+
+  // Base display width calculation: fit container width or native page width
+  const baseWidth = Math.min(page.width || 720, containerWidth);
+  const renderedWidth = Math.max(100, Math.round(baseWidth * zoom));
+  const aspectRatio = page.height && page.width ? page.height / page.width : 1.5;
+  const renderedHeight = Math.round(renderedWidth * aspectRatio);
 
   return (
     <main className="flex-1 bg-slate-950 flex flex-col h-full overflow-hidden relative">
@@ -154,7 +167,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
           {/* Zoom Level */}
           <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
             <button
-              onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+              onClick={() => setZoom((z) => Math.max(0.25, Number((z - 0.25).toFixed(2))))}
               className="p-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
               title="Zoom Out"
             >
@@ -164,7 +177,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
               {Math.round(zoom * 100)}%
             </span>
             <button
-              onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
+              onClick={() => setZoom((z) => Math.min(3, Number((z + 0.25).toFixed(2))))}
               className="p-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
               title="Zoom In"
             >
@@ -181,115 +194,119 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Main Canvas Viewport Area */}
+      {/* Main Canvas Viewport Area with Continuous Vertical Scrolling */}
       <div
         ref={workspaceRef}
         onMouseMove={handleSplitMouseMove}
         onMouseUp={handleSplitMouseUp}
-        className="flex-1 overflow-auto p-4 flex items-center justify-center relative select-none"
+        className="flex-1 overflow-auto p-4 flex flex-col items-center relative select-none"
       >
-        <div
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
-          className="transition-transform duration-75 max-w-full"
-        >
-          {/* Single Image Views (Cleaned or Original) */}
-          {(viewMode === 'cleaned' || viewMode === 'original') && (
-            <div className="relative inline-block border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-              <img
-                ref={imageRef}
-                src={viewMode === 'cleaned' ? page.cleanedUrl : page.originalUrl}
-                alt={page.name}
-                onLoad={() => {
-                  if (imageRef.current) {
-                    setDisplaySize({
-                      width: imageRef.current.clientWidth,
-                      height: imageRef.current.clientHeight,
-                    });
-                  }
-                }}
-                className="max-h-[80vh] w-auto object-contain block"
+        {/* Single Image Views (Cleaned or Original) */}
+        {(viewMode === 'cleaned' || viewMode === 'original') && (
+          <div
+            style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+            className="relative border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0 my-auto"
+          >
+            <img
+              ref={imageRef}
+              src={viewMode === 'cleaned' ? page.cleanedUrl : page.originalUrl}
+              alt={page.name}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              className="block"
+            />
+
+            {/* Bounding Box Region Overlay (Active in Cleaned View) */}
+            {viewMode === 'cleaned' && (
+              <RegionOverlay
+                imageWidth={page.width}
+                imageHeight={page.height}
+                displayWidth={renderedWidth}
+                displayHeight={renderedHeight}
+                regions={page.regions}
+                selectedRegionId={selectedRegionId}
+                onSelectRegion={onSelectRegion}
+                onUpdateRegion={onUpdateRegion}
+                onAddRegion={onAddRegion}
+                onDeleteRegion={onDeleteRegion}
+                isDrawingMode={isDrawingMode}
               />
+            )}
+          </div>
+        )}
 
-              {/* Bounding Box Region Overlay (Active in Cleaned View) */}
-              {viewMode === 'cleaned' && displaySize.width > 0 && (
-                <RegionOverlay
-                  imageWidth={page.width}
-                  imageHeight={page.height}
-                  displayWidth={displaySize.width}
-                  displayHeight={displaySize.height}
-                  regions={page.regions}
-                  selectedRegionId={selectedRegionId}
-                  onSelectRegion={onSelectRegion}
-                  onUpdateRegion={onUpdateRegion}
-                  onAddRegion={onAddRegion}
-                  onDeleteRegion={onDeleteRegion}
-                  isDrawingMode={isDrawingMode}
-                />
-              )}
-            </div>
-          )}
-
-          {/* Side-by-Side Comparison */}
-          {viewMode === 'side-by-side' && (
-            <div className="flex gap-4 items-center justify-center max-w-full">
-              <div className="flex flex-col items-center">
-                <span className="text-[11px] font-semibold text-slate-400 mb-1">Original</span>
-                <div className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-                  <img
-                    src={page.originalUrl}
-                    alt="Original"
-                    className="max-h-[75vh] w-auto object-contain block"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-[11px] font-semibold text-emerald-400 mb-1">Cleaned Preview</span>
-                <div className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-                  <img
-                    src={page.cleanedUrl}
-                    alt="Cleaned"
-                    className="max-h-[75vh] w-auto object-contain block"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Split Comparison Slider View */}
-          {viewMode === 'split-slider' && (
-            <div className="relative inline-block border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-              {/* Cleaned Image Underneath */}
-              <img
-                src={page.cleanedUrl}
-                alt="Cleaned"
-                className="max-h-[80vh] w-auto object-contain block"
-              />
-
-              {/* Original Image Clipped Above */}
+        {/* Side-by-Side Comparison */}
+        {viewMode === 'side-by-side' && (
+          <div className="flex flex-col md:flex-row gap-4 items-start justify-center max-w-full my-auto">
+            <div className="flex flex-col items-center">
+              <span className="text-[11px] font-semibold text-slate-400 mb-1">Original</span>
               <div
-                style={{ clipPath: `polygon(0 0, ${splitPos}% 0, ${splitPos}% 100%, 0 100%)` }}
-                className="absolute inset-0"
+                style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
               >
                 <img
                   src={page.originalUrl}
                   alt="Original"
-                  className="max-h-[80vh] w-auto object-contain block"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  className="block"
                 />
               </div>
-
-              {/* Interactive Divider Line */}
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[11px] font-semibold text-emerald-400 mb-1">Cleaned Preview</span>
               <div
-                style={{ left: `${splitPos}%` }}
-                onMouseDown={() => (isDraggingSplit.current = true)}
-                className="absolute top-0 bottom-0 w-1 bg-indigo-500 cursor-ew-resize flex items-center justify-center shadow-lg"
+                style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
               >
-                <div className="w-6 h-6 bg-indigo-600 rounded-full border-2 border-white flex items-center justify-center shadow">
-                  <Maximize2 className="w-3 h-3 text-white rotate-45" />
-                </div>
+                <img
+                  src={page.cleanedUrl}
+                  alt="Cleaned"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  className="block"
+                />
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Split Comparison Slider View */}
+        {viewMode === 'split-slider' && (
+          <div
+            style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+            className="relative border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0 my-auto"
+          >
+            {/* Cleaned Image Underneath */}
+            <img
+              src={page.cleanedUrl}
+              alt="Cleaned"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              className="block"
+            />
+
+            {/* Original Image Clipped Above */}
+            <div
+              style={{ clipPath: `polygon(0 0, ${splitPos}% 0, ${splitPos}% 100%, 0 100%)` }}
+              className="absolute inset-0"
+            >
+              <img
+                src={page.originalUrl}
+                alt="Original"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                className="block"
+              />
+            </div>
+
+            {/* Interactive Divider Line */}
+            <div
+              style={{ left: `${splitPos}%` }}
+              onMouseDown={() => (isDraggingSplit.current = true)}
+              className="absolute top-0 bottom-0 w-1 bg-indigo-500 cursor-ew-resize flex items-center justify-center shadow-lg z-10"
+            >
+              <div className="w-6 h-6 bg-indigo-600 rounded-full border-2 border-white flex items-center justify-center shadow">
+                <Maximize2 className="w-3 h-3 text-white rotate-45" />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
