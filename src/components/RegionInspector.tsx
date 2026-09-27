@@ -7,8 +7,9 @@ import {
   Info,
   Wand2,
   X,
+  Plus,
 } from 'lucide-react';
-import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage } from '../types';
+import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
 
 interface RegionInspectorProps {
@@ -17,6 +18,10 @@ interface RegionInspectorProps {
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
   onDeleteRegion: (id: string) => void;
+  detectionMode: 'auto' | 'manual';
+  onSelectDetectionMode: (mode: 'auto' | 'manual') => void;
+  manualCategory: RegionCategory;
+  onSelectManualCategory: (category: RegionCategory) => void;
   onRunOcr: () => void;
   onCleanRegion: (regionId: string, options: CleaningOptions) => void;
   onCleanAllRegions: (options: CleaningOptions) => void;
@@ -29,6 +34,10 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onSelectRegion,
   onUpdateRegion,
   onDeleteRegion,
+  detectionMode,
+  onSelectDetectionMode,
+  manualCategory,
+  onSelectManualCategory,
   onRunOcr,
   onCleanRegion,
   onCleanAllRegions,
@@ -69,29 +78,73 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
       </div>
 
       <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
-        {/* Bulk Actions */}
+        {/* Detection Mode Selection Menu */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Automated Tools
+            Detection Mode
           </span>
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={onRunOcr}
+              type="button"
+              onClick={() => {
+                onSelectDetectionMode('auto');
+                onRunOcr();
+              }}
               disabled={page.isProcessing}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                detectionMode === 'auto'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+              } disabled:opacity-50`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${page.isProcessing ? 'animate-spin' : ''}`} />
-              <span>Detect Text</span>
+              <span>Automatic Detection</span>
             </button>
             <button
-              onClick={() => onCleanAllRegions(activeOptions)}
-              disabled={page.regions.length === 0 || page.isProcessing}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              type="button"
+              onClick={() => onSelectDetectionMode('manual')}
+              className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                detectionMode === 'manual'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+              }`}
             >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>Clean All</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Manual Selection</span>
             </button>
           </div>
+
+          {/* Category selection for Manual Selection */}
+          {detectionMode === 'manual' && (
+            <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-slate-800/80">
+              <label className="text-xs text-slate-300 font-medium">Default Manual Category</label>
+              <select
+                value={manualCategory}
+                onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="bubble-oval">Bubble Oval/Round</option>
+                <option value="bubble-rect">Bubble Square/Box</option>
+                <option value="text-outside">Floating Text (Outside Bubble)</option>
+                <option value="sfx">SFX (Sound Effects)</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Cleaning Action */}
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Bulk Cleaning Tools
+          </span>
+          <button
+            onClick={() => onCleanAllRegions(activeOptions)}
+            disabled={page.regions.length === 0 || page.isProcessing}
+            className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>Clean All Regions</span>
+          </button>
         </div>
 
         {/* Cleaning Method Settings */}
@@ -165,13 +218,13 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                 onChange={(e) =>
                   onUpdateRegion({
                     ...selectedRegion,
-                    category: e.target.value as any,
+                    category: e.target.value as RegionCategory,
                   })
                 }
                 className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
-                <option value="bubble-oval">Bubble (Oval / Round)</option>
-                <option value="bubble-rect">Bubble (Square / Box)</option>
+                <option value="bubble-oval">Bubble Oval/Round</option>
+                <option value="bubble-rect">Bubble Square/Box</option>
                 <option value="text-outside">Floating Text (Outside Bubble)</option>
                 <option value="sfx">SFX (Sound Effects)</option>
               </select>

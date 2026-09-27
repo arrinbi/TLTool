@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer } from 'lucide-react';
-import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox } from '../types';
+import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles } from 'lucide-react';
+import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory } from '../types';
 import { RegionOverlay } from './RegionOverlay';
 
 interface MainWorkspaceProps {
@@ -8,8 +8,15 @@ interface MainWorkspaceProps {
   selectedRegionId: string | null;
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
-  onAddRegion: (bbox: BoundingBox) => void;
+  onAddRegion: (bbox: BoundingBox, category?: RegionCategory) => void;
   onDeleteRegion: (id: string) => void;
+  detectionMode: 'auto' | 'manual';
+  onSelectDetectionMode: (mode: 'auto' | 'manual') => void;
+  manualCategory: RegionCategory;
+  onSelectManualCategory: (category: RegionCategory) => void;
+  isDrawingMode: boolean;
+  setIsDrawingMode: (drawing: boolean) => void;
+  onRunOcr: () => void;
 }
 
 export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
@@ -19,10 +26,16 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
   onUpdateRegion,
   onAddRegion,
   onDeleteRegion,
+  detectionMode,
+  onSelectDetectionMode,
+  manualCategory,
+  onSelectManualCategory,
+  isDrawingMode,
+  setIsDrawingMode,
+  onRunOcr,
 }) => {
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('cleaned');
   const [zoom, setZoom] = useState<number>(1);
-  const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
   const [splitPos, setSplitPos] = useState<number>(50); // Split slider percentage (0-100)
   const isDraggingSplit = useRef<boolean>(false);
 
@@ -129,6 +142,55 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
 
         {/* Mode & Zoom Controls */}
         <div className="flex items-center gap-2">
+          {/* Detection Mode Switcher */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+            <button
+              onClick={() => {
+                onSelectDetectionMode('auto');
+                onRunOcr();
+              }}
+              disabled={page.isProcessing}
+              className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                detectionMode === 'auto'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              } disabled:opacity-50`}
+              title="Automatic Detection (Run OCR)"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Automatic Detection</span>
+            </button>
+            <button
+              onClick={() => onSelectDetectionMode('manual')}
+              className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                detectionMode === 'manual'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+              title="Manual Selection (Draw Text Regions)"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Manual Selection</span>
+            </button>
+          </div>
+
+          {/* Category Selector when in Manual Selection Mode */}
+          {detectionMode === 'manual' && (
+            <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
+              <span className="text-slate-400 text-[11px]">Category:</span>
+              <select
+                value={manualCategory}
+                onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="bubble-oval">Bubble Oval/Round</option>
+                <option value="bubble-rect">Bubble Square/Box</option>
+                <option value="text-outside">Floating Text (Outside Bubble)</option>
+                <option value="sfx">SFX (Sound Effects)</option>
+              </select>
+            </div>
+          )}
+
           {/* Draw / Select Tool Toggle */}
           <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
             <button
@@ -224,6 +286,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
                   onAddRegion={onAddRegion}
                   onDeleteRegion={onDeleteRegion}
                   isDrawingMode={isDrawingMode}
+                  manualCategory={manualCategory}
                 />
               )}
             </div>

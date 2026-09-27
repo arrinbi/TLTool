@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import type { TextRegion, BoundingBox } from '../types';
+import type { TextRegion, BoundingBox, RegionCategory } from '../types';
 
 interface RegionOverlayProps {
   imageWidth: number;
@@ -10,9 +10,10 @@ interface RegionOverlayProps {
   selectedRegionId: string | null;
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
-  onAddRegion: (bbox: BoundingBox) => void;
+  onAddRegion: (bbox: BoundingBox, category?: RegionCategory) => void;
   onDeleteRegion: (id: string) => void;
   isDrawingMode: boolean;
+  manualCategory?: RegionCategory;
 }
 
 export const RegionOverlay: React.FC<RegionOverlayProps> = ({
@@ -25,6 +26,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   onSelectRegion,
   onAddRegion,
   isDrawingMode,
+  manualCategory,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -75,7 +77,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 
       // Only create if box has a minimum size
       if (width > 10 && height > 10) {
-        onAddRegion({ x: minX, y: minY, width, height });
+        onAddRegion({ x: minX, y: minY, width, height }, manualCategory);
       }
     }
     setIsDrawing(false);
