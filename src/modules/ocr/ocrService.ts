@@ -81,6 +81,70 @@ export type TextUnit = {
 };
 
 /**
+ * Checks whether a single detected TextUnit is valid or likely noise/artifact from non-text image regions.
+ */
+export function isValidTextUnit(unit: TextUnit): boolean {
+  const text = unit.text ? unit.text.trim() : '';
+  if (!text) return false;
+
+  const { width, height } = unit.bbox;
+  if (width < 3 || height < 3) return false;
+
+  // Extreme aspect ratios (e.g., extremely long thin line art or texture artifacts)
+  const aspectRatio = width / Math.max(1, height);
+  if (aspectRatio > 25 || aspectRatio < 0.04) return false;
+
+  const hasLetterOrDigit = /[a-zA-Z0-9\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(text);
+
+  // If unit has no letters/digits (only punctuation/symbols)
+  if (!hasLetterOrDigit) {
+    // Check if it's common valid comic punctuation like "...", "!?", "?!", "!", "?"
+    const isValidComicPunctuation = /^(\.\.\.|!\?|\?!|!|\?)+$/.test(text);
+    if (!isValidComicPunctuation) {
+      // Rejects line art artifacts like "---", "|||", "///", "===", "___", "~~~", ",", ".", "-", "_", etc.
+      return false;
+    }
+    // For valid comic punctuation without letters, require decent confidence (>= 50)
+    if (unit.confidence < 50) return false;
+  }
+
+  // Filter out single character low-confidence noise
+  if (text.length === 1) {
+    if (unit.confidence < 45) return false;
+    // Single non-alphanumeric character
+    if (!hasLetterOrDigit && unit.confidence < 70) return false;
+  }
+
+  // Filter out low confidence short noise
+  if (unit.confidence < 30) return false;
+
+  return true;
+}
+
+/**
+ * Checks whether a clustered TextRegion represents an actual visible text area.
+ */
+export function isValidTextRegion(region: TextRegion): boolean {
+  const text = region.text ? region.text.trim() : '';
+  if (!text) return false;
+
+  const { width, height } = region.bbox;
+  if (width < 3 || height < 3) return false;
+
+  const hasLetterOrDigit = /[a-zA-Z0-9\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(text);
+
+  if (!hasLetterOrDigit) {
+    const isValidComicPunctuation = /^(\.\.\.|!\?|\?!|!|\?|\s)+$/.test(text);
+    if (!isValidComicPunctuation) return false;
+    if (region.confidence < 50) return false;
+  }
+
+  if (region.confidence < 30) return false;
+
+  return true;
+}
+
+/**
  * Extract word/line-level TextUnits from Tesseract v7 layout block hierarchy.
  * Prioritizes word-level geometry ('word.bbox') over paragraph or block geometry.
  */
@@ -154,7 +218,7 @@ export function extractTextUnitsFromBlocks(blocks?: Array<{
 
             if (width < 3 || height < 3) continue;
 
-            rawUnits.push({
+            const unit: TextUnit = {
               bbox: { x: b.x0, y: b.y0, width, height },
               text,
               confidence: word.confidence ?? 80,
@@ -163,7 +227,11 @@ export function extractTextUnitsFromBlocks(blocks?: Array<{
                 paragraphBbox,
                 blockBbox,
               },
-            });
+            };
+
+            if (isValidTextUnit(unit)) {
+              rawUnits.push(unit);
+            }
           }
         } else if (line.text && line.bbox) {
           // Fallback to line box if word-level data is missing for a line
@@ -173,7 +241,7 @@ export function extractTextUnitsFromBlocks(blocks?: Array<{
             const width = b.x1 - b.x0;
             const height = b.y1 - b.y0;
             if (width >= 3 && height >= 3) {
-              rawUnits.push({
+              const unit: TextUnit = {
                 bbox: { x: b.x0, y: b.y0, width, height },
                 text,
                 confidence: line.confidence ?? 80,
@@ -182,7 +250,11 @@ export function extractTextUnitsFromBlocks(blocks?: Array<{
                   paragraphBbox,
                   blockBbox,
                 },
-              });
+              };
+
+              if (isValidTextUnit(unit)) {
+                rawUnits.push(unit);
+              }
             }
           }
         }
@@ -230,24 +302,25 @@ export function clusterBoxes(
   items: TextUnit[],
   _legacyMargin: number = 25
 ): TextRegion[] {
-  if (items.length === 0) return [];
+  const validItems = items.filter(isValidTextUnit);
+  if (validItems.length === 0) return [];
 
   const visited = new Set<number>();
   const clusters: TextRegion[] = [];
 
-  for (let i = 0; i < items.length; i++) {
+  for (let i = 0; i < validItems.length; i++) {
     if (visited.has(i)) continue;
 
-    const currentCluster: TextUnit[] = [items[i]];
+    const currentCluster: TextUnit[] = [validItems[i]];
     visited.add(i);
 
     let addedNew = true;
     while (addedNew) {
       addedNew = false;
-      for (let j = 0; j < items.length; j++) {
+      for (let j = 0; j < validItems.length; j++) {
         if (visited.has(j)) continue;
 
-        const candidate = items[j];
+        const candidate = validItems[j];
         const isNear = currentCluster.some((cItem) => areUnitsInSameRegion(cItem, candidate));
 
         if (isNear) {
@@ -303,14 +376,18 @@ export function clusterBoxes(
     const avgConfidence =
       currentCluster.reduce((sum, item) => sum + item.confidence, 0) / currentCluster.length;
 
-    clusters.push({
+    const region: TextRegion = {
       id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       bbox: combinedBbox,
       text: combinedText,
       confidence: Math.round(avgConfidence),
       category: classifyRegionCategory(combinedBbox, combinedText),
       isCleaned: false,
-    });
+    };
+
+    if (isValidTextRegion(region)) {
+      clusters.push(region);
+    }
   }
 
   return clusters;
@@ -463,11 +540,7 @@ export function deduplicateTextUnits(units: TextUnit[]): TextUnit[] {
   const result: TextUnit[] = [];
 
   for (const candidate of sorted) {
-    const textClean = candidate.text.trim();
-    if (!textClean) continue;
-
-    // Filter out low confidence single non-alphanumeric noise
-    if (candidate.confidence < 35 && textClean.length === 1 && !/[a-zA-Z0-9]/.test(textClean)) {
+    if (!isValidTextUnit(candidate)) {
       continue;
     }
 

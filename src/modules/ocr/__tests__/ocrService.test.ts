@@ -77,6 +77,36 @@ describe('OCR Service Helper Functions', () => {
     expect(classifyRegionCategory(rectBox, 'System notification message')).toBe('bubble-rect');
   });
 
+  describe('False-Positive OCR Region Filtering & Validation', () => {
+    it('rejects obvious false-positive text units (pure line art/symbol noise, extreme aspect ratios, low confidence single character noise)', () => {
+      const falsePositiveUnits = [
+        { bbox: { x: 100, y: 100, width: 200, height: 2 }, text: '----------------', confidence: 80 }, // extreme aspect ratio / line art
+        { bbox: { x: 50, y: 50, width: 30, height: 10 }, text: '|||', confidence: 60 }, // pure non-comic punctuation noise
+        { bbox: { x: 80, y: 80, width: 10, height: 10 }, text: '~', confidence: 20 }, // single low confidence symbol
+        { bbox: { x: 120, y: 120, width: 15, height: 15 }, text: 'x', confidence: 30 }, // single low confidence character
+        { bbox: { x: 200, y: 200, width: 2, height: 2 }, text: 'a', confidence: 90 }, // tiny box (<3px)
+      ];
+
+      const clusters = clusterBoxes(falsePositiveUnits);
+      expect(clusters.length).toBe(0);
+    });
+
+    it('preserves legitimate text units and regions (words, numbers, valid comic punctuation, SFX)', () => {
+      const legitimateUnits = [
+        { bbox: { x: 100, y: 100, width: 80, height: 20 }, text: 'Hello', confidence: 92 },
+        { bbox: { x: 190, y: 100, width: 60, height: 20 }, text: 'world!', confidence: 90 },
+        { bbox: { x: 300, y: 200, width: 40, height: 18 }, text: '...', confidence: 85 }, // valid comic ellipsis
+        { bbox: { x: 400, y: 300, width: 30, height: 22 }, text: '123', confidence: 95 }, // numbers
+      ];
+
+      const clusters = clusterBoxes(legitimateUnits);
+      expect(clusters.length).toBe(3);
+      expect(clusters[0].text).toBe('Hello world!');
+      expect(clusters[1].text).toBe('...');
+      expect(clusters[2].text).toBe('123');
+    });
+  });
+
   describe('Bounding Box Accuracy Requirements', () => {
     it('text inside a speech bubble: bounds text tightly without expanding to speech bubble boundary', () => {
       // Speech bubble region is [100, 100, 300, 200], but text is centered inside
