@@ -1,4 +1,4 @@
-import type { BoundingBox, CleaningOptions } from '../../types';
+import type { BoundingBox, CleaningOptions, TextRegion, RegionCategory, CategoryCleaningFlags } from '../../types';
 
 export interface TextMaskResult {
   mask: Uint8Array;
@@ -566,16 +566,46 @@ export async function cleanImageRegion(
 }
 
 /**
+ * Determines whether a region category is enabled for cleaning based on options.
+ * Default behavior: Speech bubbles and text outside are cleaned by default, SFX is skipped by default.
+ */
+export function isCategoryEnabled(
+  category?: RegionCategory,
+  flags?: CategoryCleaningFlags
+): boolean {
+  if (!flags) {
+    // Default: SFX skipped by default, other categories enabled
+    return category !== 'sfx';
+  }
+
+  switch (category) {
+    case 'bubble-oval':
+      return flags.cleanBubbleOval;
+    case 'bubble-rect':
+      return flags.cleanBubbleRect;
+    case 'text-outside':
+      return flags.cleanTextOutside;
+    case 'sfx':
+      return flags.cleanSfx;
+    default:
+      return true;
+  }
+}
+
+/**
  * Clean all detected regions in one pass using precise mask-level cleaning.
+ * Skips regions whose category is disabled in cleaning options (e.g. SFX skipped by default).
  */
 export async function cleanAllRegions(
   currentCleanedUrl: string,
-  regions: BoundingBox[],
+  regions: TextRegion[],
   options: CleaningOptions
 ): Promise<string> {
   let activeUrl = currentCleanedUrl;
-  for (const bbox of regions) {
-    activeUrl = await cleanImageRegion(activeUrl, bbox, options);
+  for (const region of regions) {
+    if (isCategoryEnabled(region.category, options.categories)) {
+      activeUrl = await cleanImageRegion(activeUrl, region.bbox, options);
+    }
   }
   return activeUrl;
 }
