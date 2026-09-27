@@ -4,9 +4,11 @@ import {
   generateTextMask,
   cleanBubbleText,
   inpaintTextMask,
+  isCategoryEnabled,
+  cleanAllRegions,
   CLEANING_LIMITATIONS_NOTICE,
 } from '../cleaningService';
-import type { BoundingBox } from '../../../types';
+import type { BoundingBox, TextRegion, CleaningOptions } from '../../../types';
 
 describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
   let mockCtx: CanvasRenderingContext2D;
@@ -46,6 +48,87 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
   it('exports technical limitations notice with structured guidelines', () => {
     expect(CLEANING_LIMITATIONS_NOTICE.title).toBeDefined();
     expect(CLEANING_LIMITATIONS_NOTICE.items.length).toBeGreaterThan(0);
+  });
+
+  describe('Category Filtering & cleanAllRegions Runtime Behavior', () => {
+    it('isCategoryEnabled correctly checks category flags for bubble-oval, bubble-rect, text-outside, and sfx', () => {
+      // Default (no flags provided): SFX is false, others are true
+      expect(isCategoryEnabled('bubble-oval')).toBe(true);
+      expect(isCategoryEnabled('bubble-rect')).toBe(true);
+      expect(isCategoryEnabled('text-outside')).toBe(true);
+      expect(isCategoryEnabled('sfx')).toBe(false);
+
+      // Explicit flags
+      const flags = {
+        cleanBubbleOval: true,
+        cleanBubbleRect: false,
+        cleanTextOutside: true,
+        cleanSfx: false,
+      };
+
+      expect(isCategoryEnabled('bubble-oval', flags)).toBe(true);
+      expect(isCategoryEnabled('bubble-rect', flags)).toBe(false);
+      expect(isCategoryEnabled('text-outside', flags)).toBe(true);
+      expect(isCategoryEnabled('sfx', flags)).toBe(false);
+    });
+
+    it('cleanAllRegions directly skips SFX region when cleanSfx === false and returns initial URL unchanged', async () => {
+      const sfxRegion: TextRegion = {
+        id: 'r1',
+        bbox: { x: 10, y: 10, width: 20, height: 20 },
+        text: 'BOOM!!',
+        confidence: 90,
+        isCleaned: false,
+        category: 'sfx',
+      };
+
+      const options: CleaningOptions = {
+        method: 'solid-white',
+        padding: 2,
+        categories: {
+          cleanBubbleOval: true,
+          cleanBubbleRect: true,
+          cleanTextOutside: true,
+          cleanSfx: false,
+        },
+      };
+
+      const initialUrl = 'data:image/png;base64,initial_url_unchanged';
+      const resultUrl = await cleanAllRegions(initialUrl, [sfxRegion], options);
+
+      // Prove that cleanImageRegion was completely bypassed for SFX: the return value is the exact initial URL reference
+      expect(resultUrl).toBe(initialUrl);
+    });
+
+    it('cleanAllRegions processes SFX region when cleanSfx === true and passes it through image cleaning', async () => {
+      const sfxRegion: TextRegion = {
+        id: 'r1',
+        bbox: { x: 10, y: 10, width: 20, height: 20 },
+        text: 'KABOOM!!',
+        confidence: 98,
+        isCleaned: false,
+        category: 'sfx',
+      };
+
+      const options: CleaningOptions = {
+        method: 'solid-white',
+        padding: 2,
+        categories: {
+          cleanBubbleOval: true,
+          cleanBubbleRect: true,
+          cleanTextOutside: true,
+          cleanSfx: true,
+        },
+      };
+
+      const initialUrl = 'data:image/png;base64,initial_url_to_be_cleaned';
+      const resultUrl = await cleanAllRegions(initialUrl, [sfxRegion], options);
+
+      // Prove that cleanImageRegion was executed for SFX: result is a newly generated cleaned image data/blob URL
+      expect(resultUrl).not.toBe(initialUrl);
+      expect(typeof resultUrl).toBe('string');
+      expect(resultUrl.length).toBeGreaterThan(0);
+    });
   });
 
   describe('Realistic Manhwa Artwork Preservation Scenarios', () => {
