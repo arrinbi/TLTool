@@ -5,6 +5,7 @@ import type {
   CleaningOptions,
   WorkflowStage,
   BoundingBox,
+  RegionCategory,
 } from './types';
 import { HeaderToolbar } from './components/HeaderToolbar';
 import { PageManager } from './components/PageManager';
@@ -19,6 +20,18 @@ export function App() {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<WorkflowStage>('ocr-cleaning');
+  const [detectionMode, setDetectionMode] = useState<'auto' | 'manual'>('auto');
+  const [manualCategory, setManualCategory] = useState<RegionCategory>('bubble-oval');
+  const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
+
+  const handleSelectDetectionMode = useCallback((mode: 'auto' | 'manual') => {
+    setDetectionMode(mode);
+    if (mode === 'manual') {
+      setIsDrawingMode(true);
+    } else {
+      setIsDrawingMode(false);
+    }
+  }, []);
 
   // Load sample demo page if empty on start
   useEffect(() => {
@@ -67,22 +80,7 @@ export function App() {
               cleanedUrl: url,
               width: 600,
               height: 900,
-              regions: [
-                {
-                  id: 'region-demo-1',
-                  bbox: { x: 80, y: 90, width: 200, height: 120 },
-                  text: 'WHAT IS THIS?!',
-                  confidence: 98,
-                  isCleaned: false,
-                },
-                {
-                  id: 'region-demo-2',
-                  bbox: { x: 270, y: 530, width: 220, height: 140 },
-                  text: 'THE MANHWA HAS\nBEEN CLEANED!',
-                  confidence: 96,
-                  isCleaned: false,
-                },
-              ],
+              regions: [],
               history: [],
               historyIndex: -1,
               isProcessing: false,
@@ -135,11 +133,6 @@ export function App() {
     if (newPages.length > 0) {
       setPages((prev) => [...prev, ...newPages]);
       setSelectedPageId(newPages[0].id);
-
-      // Auto run text detection on newly uploaded pages
-      for (const p of newPages) {
-        runTextDetectionOnPage(p.id, p.originalUrl);
-      }
     }
   }, []);
 
@@ -189,7 +182,7 @@ export function App() {
     );
   }, [selectedPageId]);
 
-  const handleAddRegion = useCallback((bbox: BoundingBox) => {
+  const handleAddRegion = useCallback((bbox: BoundingBox, category?: RegionCategory) => {
     if (!selectedPageId) return;
     const newRegion: TextRegion = {
       id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -197,6 +190,7 @@ export function App() {
       text: '',
       confidence: 100,
       isCleaned: false,
+      category: category || 'bubble-oval',
     };
 
     setPages((prev) =>
@@ -394,6 +388,15 @@ export function App() {
           onUpdateRegion={handleUpdateRegion}
           onAddRegion={handleAddRegion}
           onDeleteRegion={handleDeleteRegion}
+          detectionMode={detectionMode}
+          onSelectDetectionMode={handleSelectDetectionMode}
+          manualCategory={manualCategory}
+          onSelectManualCategory={setManualCategory}
+          isDrawingMode={isDrawingMode}
+          setIsDrawingMode={setIsDrawingMode}
+          onRunOcr={() =>
+            selectedPage && runTextDetectionOnPage(selectedPage.id, selectedPage.originalUrl)
+          }
         />
 
         {/* Sidebar Right: Region Inspector & Cleaning Options */}
@@ -403,6 +406,10 @@ export function App() {
           onSelectRegion={setSelectedRegionId}
           onUpdateRegion={handleUpdateRegion}
           onDeleteRegion={handleDeleteRegion}
+          detectionMode={detectionMode}
+          onSelectDetectionMode={handleSelectDetectionMode}
+          manualCategory={manualCategory}
+          onSelectManualCategory={setManualCategory}
           onRunOcr={() =>
             selectedPage && runTextDetectionOnPage(selectedPage.id, selectedPage.originalUrl)
           }
