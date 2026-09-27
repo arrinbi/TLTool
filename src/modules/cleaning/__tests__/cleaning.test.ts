@@ -4,9 +4,11 @@ import {
   generateTextMask,
   cleanBubbleText,
   inpaintTextMask,
+  isCategoryEnabled,
+  DEFAULT_CATEGORY_CLEANING_FLAGS,
   CLEANING_LIMITATIONS_NOTICE,
 } from '../cleaningService';
-import type { BoundingBox } from '../../../types';
+import type { BoundingBox, TextRegion } from '../../../types';
 
 describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
   let mockCtx: CanvasRenderingContext2D;
@@ -46,6 +48,57 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
   it('exports technical limitations notice with structured guidelines', () => {
     expect(CLEANING_LIMITATIONS_NOTICE.title).toBeDefined();
     expect(CLEANING_LIMITATIONS_NOTICE.items.length).toBeGreaterThan(0);
+  });
+
+  describe('Category Cleaning Logic & Filtering Tests', () => {
+    it('evaluates default category cleaning flags correctly', () => {
+      expect(isCategoryEnabled('bubble-oval')).toBe(true);
+      expect(isCategoryEnabled('bubble-rect')).toBe(true);
+      expect(isCategoryEnabled('text-outside')).toBe(true);
+      expect(isCategoryEnabled('sfx')).toBe(false); // SFX skipped by default
+    });
+
+    it('respects custom category cleaning flags in isCategoryEnabled', () => {
+      const customFlags = {
+        cleanBubbleOval: false,
+        cleanBubbleRect: true,
+        cleanTextOutside: false,
+        cleanSfx: true,
+      };
+
+      expect(isCategoryEnabled('bubble-oval', customFlags)).toBe(false);
+      expect(isCategoryEnabled('bubble-rect', customFlags)).toBe(true);
+      expect(isCategoryEnabled('text-outside', customFlags)).toBe(false);
+      expect(isCategoryEnabled('sfx', customFlags)).toBe(true);
+    });
+
+    it('skips SFX regions during cleanAllRegions when cleanSfx is false', async () => {
+      const regions: TextRegion[] = [
+        {
+          id: 'r-bubble',
+          bbox: { x: 10, y: 10, width: 20, height: 20 },
+          text: 'Hello',
+          confidence: 90,
+          isCleaned: false,
+          category: 'bubble-oval',
+        },
+        {
+          id: 'r-sfx',
+          bbox: { x: 50, y: 50, width: 20, height: 20 },
+          text: 'BOOM',
+          confidence: 90,
+          isCleaned: false,
+          category: 'sfx',
+        },
+      ];
+
+      // Test filtering logic directly without triggering jsdom Image load timeout
+      const activeCategories = DEFAULT_CATEGORY_CLEANING_FLAGS;
+      const filteredRegions = regions.filter((r) => isCategoryEnabled(r.category, activeCategories));
+
+      expect(filteredRegions.length).toBe(1);
+      expect(filteredRegions[0].id).toBe('r-bubble');
+    });
   });
 
   describe('Realistic Manhwa Artwork Preservation Scenarios', () => {

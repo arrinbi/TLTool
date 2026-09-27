@@ -8,8 +8,8 @@ import {
   Wand2,
   X,
 } from 'lucide-react';
-import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage } from '../types';
-import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
+import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, CategoryCleaningFlags } from '../types';
+import { CLEANING_LIMITATIONS_NOTICE, DEFAULT_CATEGORY_CLEANING_FLAGS } from '../modules/cleaning/cleaningService';
 
 interface RegionInspectorProps {
   page: ManhwaPage | null;
@@ -37,6 +37,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('smart-fill');
   const [padding, setPadding] = useState<number>(3);
   const [fillColor, setFillColor] = useState<string>('#ffffff');
+  const [categories, setCategories] = useState<CategoryCleaningFlags>(DEFAULT_CATEGORY_CLEANING_FLAGS);
   const [showLimitationsModal, setShowLimitationsModal] = useState<boolean>(false);
 
   if (!page) {
@@ -49,6 +50,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     method: cleaningMethod,
     padding,
     fillColor,
+    categories,
   };
 
   return (
@@ -138,6 +140,56 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               onChange={(e) => setPadding(Number(e.target.value))}
               className="accent-indigo-500 cursor-pointer"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-slate-800 pt-2 mt-1">
+            <label className="text-xs text-slate-300 font-medium">Categories to Clean</label>
+            <div className="flex flex-col gap-1.5 text-xs text-slate-400">
+              <label className="flex items-center gap-2 cursor-pointer hover:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={categories.cleanBubbleOval}
+                  onChange={(e) =>
+                    setCategories((prev) => ({ ...prev, cleanBubbleOval: e.target.checked }))
+                  }
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Bubble (Oval / Round)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer hover:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={categories.cleanBubbleRect}
+                  onChange={(e) =>
+                    setCategories((prev) => ({ ...prev, cleanBubbleRect: e.target.checked }))
+                  }
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Bubble (Square / Box)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer hover:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={categories.cleanTextOutside}
+                  onChange={(e) =>
+                    setCategories((prev) => ({ ...prev, cleanTextOutside: e.target.checked }))
+                  }
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Floating Text (Outside)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer hover:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={categories.cleanSfx}
+                  onChange={(e) =>
+                    setCategories((prev) => ({ ...prev, cleanSfx: e.target.checked }))
+                  }
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>SFX (Sound Effects)</span>
+              </label>
+            </div>
           </div>
         </div>
 
