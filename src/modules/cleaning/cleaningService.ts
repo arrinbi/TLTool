@@ -1,4 +1,40 @@
-import type { BoundingBox, CleaningOptions } from '../../types';
+import type { BoundingBox, CleaningOptions, CategoryCleaningFlags, RegionCategory, TextRegion } from '../../types';
+
+/**
+ * Default category cleaning rules:
+ * - Oval/round bubbles: clean (true)
+ * - Rectangular/box bubbles: clean (true)
+ * - Text outside bubbles: clean (true)
+ * - SFX (sound effects): skip (false)
+ */
+export const DEFAULT_CATEGORY_CLEANING_FLAGS: CategoryCleaningFlags = {
+  cleanBubbleOval: true,
+  cleanBubbleRect: true,
+  cleanTextOutside: true,
+  cleanSfx: false,
+};
+
+/**
+ * Checks whether a region's category is enabled for cleaning based on CleaningOptions.categories.
+ */
+export function isCategoryEnabled(
+  category?: RegionCategory,
+  categories: CategoryCleaningFlags = DEFAULT_CATEGORY_CLEANING_FLAGS
+): boolean {
+  const cat = category || 'bubble-oval';
+  switch (cat) {
+    case 'bubble-oval':
+      return categories.cleanBubbleOval ?? DEFAULT_CATEGORY_CLEANING_FLAGS.cleanBubbleOval;
+    case 'bubble-rect':
+      return categories.cleanBubbleRect ?? DEFAULT_CATEGORY_CLEANING_FLAGS.cleanBubbleRect;
+    case 'text-outside':
+      return categories.cleanTextOutside ?? DEFAULT_CATEGORY_CLEANING_FLAGS.cleanTextOutside;
+    case 'sfx':
+      return categories.cleanSfx ?? DEFAULT_CATEGORY_CLEANING_FLAGS.cleanSfx;
+    default:
+      return true;
+  }
+}
 
 export interface TextMaskResult {
   mask: Uint8Array;
@@ -570,11 +606,17 @@ export async function cleanImageRegion(
  */
 export async function cleanAllRegions(
   currentCleanedUrl: string,
-  regions: BoundingBox[],
+  regions: Array<BoundingBox & { category?: RegionCategory }> | TextRegion[],
   options: CleaningOptions
 ): Promise<string> {
   let activeUrl = currentCleanedUrl;
-  for (const bbox of regions) {
+  const categories = options.categories || DEFAULT_CATEGORY_CLEANING_FLAGS;
+
+  for (const region of regions) {
+    if (!isCategoryEnabled(region.category, categories)) {
+      continue;
+    }
+    const bbox: BoundingBox = 'bbox' in region ? (region as TextRegion).bbox : region;
     activeUrl = await cleanImageRegion(activeUrl, bbox, options);
   }
   return activeUrl;
