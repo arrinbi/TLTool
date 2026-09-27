@@ -49,12 +49,20 @@ export interface ManhwaPage {
   processingMessage?: string;
 }
 
+export interface CategoryCleaningFlags {
+  cleanBubbleOval: boolean;
+  cleanBubbleRect: boolean;
+  cleanTextOutside: boolean;
+  cleanSfx: boolean;
+}
+
 export interface CleaningOptions {
   method: CleaningMethod;
   padding: number; // Extra padding around bounding box in pixels
   fillColor?: string; // Color hex if solid color
   feather?: number; // Soft border feathering in pixels
   brushRadius?: number; // For manual brush cleanup
+  categories?: CategoryCleaningFlags;
 }
 
 export type WorkspaceViewMode = 'cleaned' | 'original' | 'side-by-side' | 'split-slider';

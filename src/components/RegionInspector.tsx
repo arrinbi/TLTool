@@ -8,7 +8,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react';
-import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage } from '../types';
+import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, CategoryCleaningFlags } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
 
 interface RegionInspectorProps {
@@ -39,6 +39,13 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   const [fillColor, setFillColor] = useState<string>('#ffffff');
   const [showLimitationsModal, setShowLimitationsModal] = useState<boolean>(false);
 
+  const [categoryFlags, setCategoryFlags] = useState<CategoryCleaningFlags>({
+    cleanBubbleOval: true,
+    cleanBubbleRect: true,
+    cleanTextOutside: true,
+    cleanSfx: false,
+  });
+
   if (!page) {
     return null;
   }
@@ -49,6 +56,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     method: cleaningMethod,
     padding,
     fillColor,
+    categories: categoryFlags,
   };
 
   return (
@@ -91,6 +99,62 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               <Wand2 className="w-3.5 h-3.5" />
               <span>Clean All</span>
             </button>
+          </div>
+        </div>
+
+        {/* Category Cleaning Options */}
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Target Text Categories
+          </span>
+          <div className="space-y-2 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+              <input
+                type="checkbox"
+                checked={categoryFlags.cleanBubbleOval}
+                onChange={(e) =>
+                  setCategoryFlags((prev) => ({ ...prev, cleanBubbleOval: e.target.checked }))
+                }
+                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Round / Oval Speech Bubbles</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+              <input
+                type="checkbox"
+                checked={categoryFlags.cleanBubbleRect}
+                onChange={(e) =>
+                  setCategoryFlags((prev) => ({ ...prev, cleanBubbleRect: e.target.checked }))
+                }
+                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Box-shaped Speech Bubbles</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+              <input
+                type="checkbox"
+                checked={categoryFlags.cleanTextOutside}
+                onChange={(e) =>
+                  setCategoryFlags((prev) => ({ ...prev, cleanTextOutside: e.target.checked }))
+                }
+                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>Text Outside Speech Bubbles</span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white">
+              <input
+                type="checkbox"
+                checked={categoryFlags.cleanSfx}
+                onChange={(e) =>
+                  setCategoryFlags((prev) => ({ ...prev, cleanSfx: e.target.checked }))
+                }
+                className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span>SFX (Sound Effects)</span>
+            </label>
           </div>
         </div>
 
@@ -272,7 +336,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               {CLEANING_LIMITATIONS_NOTICE.title}
             </h3>
 
-            <div className="flex flex-col gap-3 my-4">
+            <div className="flex flex-col gap-3 my-4 leading-relaxed text-xs text-slate-300">
               {CLEANING_LIMITATIONS_NOTICE.items.map((item, idx) => (
                 <div key={idx} className="bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <div className="flex justify-between items-center mb-1">
