@@ -144,6 +144,10 @@ if (typeof HTMLCanvasElement !== 'undefined') {
             }
           }
         },
+        beginPath() {},
+        ellipse() {},
+        fill() {},
+        fillText() {},
         drawImage() {},
         getImageData(x: number, y: number, w: number, h: number) {
           const imgDataArr = new Uint8ClampedArray(w * h * 4);
