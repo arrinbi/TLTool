@@ -258,8 +258,7 @@ export function App() {
       prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true } : p))
     );
 
-    const uncleanedBoxes = selectedPage.regions.map((r) => r.bbox);
-    const newCleanedUrl = await cleanAllRegions(selectedPage.cleanedUrl, uncleanedBoxes, options);
+    const newCleanedUrl = await cleanAllRegions(selectedPage.cleanedUrl, selectedPage.regions, options);
     const updatedRegions = selectedPage.regions.map((r) => ({
       ...r,
       isCleaned: true,
