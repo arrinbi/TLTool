@@ -144,20 +144,35 @@ export function App() {
       )
     );
 
-    const regions = await detectTextRegions(imageSource);
+    try {
+      const regions = await detectTextRegions(imageSource);
 
-    setPages((prev) =>
-      prev.map((p) =>
-        p.id === pageId
-          ? {
-              ...p,
-              regions,
-              isProcessing: false,
-              processingMessage: undefined,
-            }
-          : p
-      )
-    );
+      setPages((prev) =>
+        prev.map((p) =>
+          p.id === pageId
+            ? {
+                ...p,
+                regions,
+                isProcessing: false,
+                processingMessage: undefined,
+              }
+            : p
+        )
+      );
+    } catch (err) {
+      console.error('Failed to run text detection:', err);
+      setPages((prev) =>
+        prev.map((p) =>
+          p.id === pageId
+            ? {
+                ...p,
+                isProcessing: false,
+                processingMessage: undefined,
+              }
+            : p
+        )
+      );
+    }
   };
 
   const handleDeletePage = useCallback((pageId: string) => {
