@@ -36,18 +36,23 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
 
-  // Convert screen coordinates relative to container into original image pixel coordinates
-  const screenToImage = (screenX: number, screenY: number) => {
-    const x = Math.max(0, Math.min(imageWidth, Math.round(screenX / scaleX)));
-    const y = Math.max(0, Math.min(imageHeight, Math.round(screenY / scaleY)));
+  // Convert pointer event client coordinates directly into original image pixel coordinates
+  const pointerToImage = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!containerRef.current || !imageWidth || !imageHeight) return { x: 0, y: 0 };
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
+
+    const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+    const x = Math.round(normX * imageWidth);
+    const y = Math.round(normY * imageHeight);
+
     return { x, y };
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
 
     if (isDrawingMode) {
       try {
@@ -56,7 +61,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         // Fallback if setPointerCapture is not supported in environment
       }
       setIsDrawing(true);
-      const imgPos = screenToImage(clickX, clickY);
+      const imgPos = pointerToImage(e);
       setDrawStart(imgPos);
       setDrawCurrent(imgPos);
     } else if (e.target === containerRef.current) {
@@ -67,10 +72,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDrawing || !containerRef.current || !drawStart) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-    setDrawCurrent(screenToImage(clickX, clickY));
+    setDrawCurrent(pointerToImage(e));
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -83,11 +85,13 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         // Ignore fallback
       }
 
-      if (drawStart && drawCurrent) {
-        const minX = Math.min(drawStart.x, drawCurrent.x);
-        const minY = Math.min(drawStart.y, drawCurrent.y);
-        const width = Math.abs(drawCurrent.x - drawStart.x);
-        const height = Math.abs(drawCurrent.y - drawStart.y);
+      const currentPos = pointerToImage(e);
+
+      if (drawStart) {
+        const minX = Math.min(drawStart.x, currentPos.x);
+        const minY = Math.min(drawStart.y, currentPos.y);
+        const width = Math.abs(currentPos.x - drawStart.x);
+        const height = Math.abs(currentPos.y - drawStart.y);
 
         // Only create if box has a minimum size
         if (width > 10 && height > 10) {
