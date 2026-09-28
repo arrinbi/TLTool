@@ -504,6 +504,77 @@ export function generateTextMask(
     }
   }
 
+  // 3b. For manually selected text-outside regions, include enclosed light interior areas surrounded by detected dark text outline
+  if (isManualRegion && category === 'text-outside') {
+    const barrierMask = new Uint8Array(totalPixels);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const pos = y * width + x;
+        if (filteredMask[pos] === 1) {
+          for (let dy = -2; dy <= 2; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= height) continue;
+            for (let dx = -2; dx <= 2; dx++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= width) continue;
+              barrierMask[ny * width + nx] = 1;
+            }
+          }
+        }
+      }
+    }
+
+    const exteriorReachable = new Uint8Array(totalPixels);
+    const queue: number[] = [];
+
+    const addBorderPixel = (x: number, y: number) => {
+      const pos = y * width + x;
+      if (barrierMask[pos] === 0 && exteriorReachable[pos] === 0) {
+        exteriorReachable[pos] = 1;
+        queue.push(pos);
+      }
+    };
+
+    for (let x = 0; x < width; x++) {
+      addBorderPixel(x, 0);
+      addBorderPixel(x, height - 1);
+    }
+    for (let y = 0; y < height; y++) {
+      addBorderPixel(0, y);
+      addBorderPixel(width - 1, y);
+    }
+
+    let qHead = 0;
+    while (qHead < queue.length) {
+      const curr = queue[qHead++];
+      const cx = curr % width;
+      const cy = Math.floor(curr / width);
+
+      const neighbors = [
+        [cx + 1, cy],
+        [cx - 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ];
+
+      for (const [nx, ny] of neighbors) {
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const nPos = ny * width + nx;
+          if (barrierMask[nPos] === 0 && exteriorReachable[nPos] === 0) {
+            exteriorReachable[nPos] = 1;
+            queue.push(nPos);
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < totalPixels; i++) {
+      if (exteriorReachable[i] === 0) {
+        filteredMask[i] = 1;
+      }
+    }
+  }
+
   // 4. 2-pixel Morphological Dilation to capture anti-aliasing text edges and small text halos without expanding into artwork
   const finalMask = new Uint8Array(totalPixels);
   let maskPixelCount = 0;

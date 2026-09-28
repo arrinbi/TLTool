@@ -514,5 +514,41 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       expect(inpaintedPixel[0]).toBeLessThan(60); // Red channel preserved as dark
       expect(inpaintedPixel[2]).toBeGreaterThan(30); // Blue channel preserved as navy
     });
+
+    it('Scenario 10: Manually selected text-outside region with white text and dark outline over non-uniform background', () => {
+      // 60x60 canvas simulating non-uniform background (e.g. textured/colored artwork)
+      const canvas = document.createElement('canvas');
+      canvas.width = 60;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d')!;
+
+      // Background: dark gray/colored non-uniform background
+      ctx.fillStyle = '#4a5568';
+      ctx.fillRect(0, 0, 60, 60);
+
+      // White letter with black outline in center
+      // Black outline ring: x=20..39, y=20..39
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(20, 20, 20, 20);
+
+      // Solid white interior: x=24..35, y=24..35
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(24, 24, 12, 12);
+
+      const imgData = ctx.getImageData(0, 0, 60, 60);
+
+      const maskResult = generateTextMask(imgData, true, 'text-outside');
+
+      // 1. Dark outline pixels are in the cleaning mask
+      expect(maskResult.mask[21 * 60 + 21]).toBe(1);
+
+      // 2. Enclosed white interior pixels are also in the cleaning mask
+      expect(maskResult.mask[28 * 60 + 28]).toBe(1);
+
+      // 3. Surrounding artwork outside the letter remains UNTOUCHED (mask = 0)
+      expect(maskResult.mask[5 * 60 + 5]).toBe(0);
+      expect(maskResult.mask[10 * 60 + 10]).toBe(0);
+      expect(maskResult.mask[50 * 60 + 50]).toBe(0);
+    });
   });
 });
