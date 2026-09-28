@@ -161,6 +161,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
               <option value="smart-fill">Smart Fill (Border Inpaint)</option>
+              <option value="opencv-telea">OpenCV Telea (Inpaint)</option>
               <option value="solid-white">Solid Fill Color</option>
               <option value="border-sample">Border Average Color</option>
             </select>
