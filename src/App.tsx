@@ -244,6 +244,7 @@ export function App() {
     const effectiveOptions: CleaningOptions = {
       ...options,
       isManualRegion: options.isManualRegion ?? targetRegion.isManual,
+      category: targetRegion.category,
     };
 
     const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, effectiveOptions);
