@@ -169,6 +169,50 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       expect(borderPixel[0]).toBeLessThan(50);
     });
 
+    it('Scenario 1b: Manually selected text region inside simple white speech bubble with dark text and anti-aliasing', () => {
+      // 80x40 canvas simulating a manually selected region around text inside a simple white speech bubble
+      const canvas = document.createElement('canvas');
+      canvas.width = 80;
+      canvas.height = 40;
+      const ctx = canvas.getContext('2d')!;
+
+      // 1. Solid white speech bubble background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 80, 40);
+
+      // 2. Dark text with anti-aliased gray edges in center
+      // Gray anti-aliased fringe
+      ctx.fillStyle = '#b0b0b0';
+      ctx.fillRect(10, 8, 60, 24);
+      // Core dark text
+      ctx.fillStyle = '#101010';
+      ctx.fillRect(12, 10, 56, 20);
+
+      const imgData = ctx.getImageData(0, 0, 80, 40);
+      const maskResult = generateTextMask(imgData);
+
+      // Verify that background is detected as uniform speech bubble
+      expect(maskResult.isUniformBackground).toBe(true);
+
+      // Verify core text and anti-aliased fringe are masked
+      expect(maskResult.mask[20 * 80 + 20]).toBe(1); // Core text
+      expect(maskResult.mask[9 * 80 + 11]).toBe(1); // Anti-aliased fringe
+
+      // Clean text stroke using background color
+      cleanBubbleText(imgData, maskResult.mask, maskResult.avgBgColor);
+      ctx.putImageData(imgData, 0, 0);
+
+      // Check cleaned text area is clean white without dark or gray remnants
+      const cleanedCorePixel = ctx.getImageData(20, 20, 1, 1).data;
+      expect(cleanedCorePixel[0]).toBeGreaterThanOrEqual(250);
+      expect(cleanedCorePixel[1]).toBeGreaterThanOrEqual(250);
+      expect(cleanedCorePixel[2]).toBeGreaterThanOrEqual(250);
+
+      const cleanedFringePixel = ctx.getImageData(11, 9, 1, 1).data;
+      expect(cleanedFringePixel[0]).toBeGreaterThanOrEqual(250);
+      expect(cleanedFringePixel[1]).toBeGreaterThanOrEqual(250);
+    });
+
     it('Scenario 2: Black text over a textured background', () => {
       // 50x50 canvas with a gray background
       const canvas = document.createElement('canvas');
