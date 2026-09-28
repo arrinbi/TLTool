@@ -43,7 +43,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onCleanAllRegions,
   onRevertRegion,
 }) => {
-  const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('smart-fill');
+  const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
   const [padding, setPadding] = useState<number>(3);
   const [fillColor, setFillColor] = useState<string>('#ffffff');
   const [showLimitationsModal, setShowLimitationsModal] = useState<boolean>(false);
