@@ -15,6 +15,7 @@ export interface TextRegion {
   text: string;
   confidence: number; // 0 to 100
   isCleaned: boolean;
+  isManual?: boolean;
   category?: RegionCategory;
   cleaningMethod?: CleaningMethod;
   originalText?: string;
@@ -63,6 +64,7 @@ export interface CleaningOptions {
   feather?: number; // Soft border feathering in pixels
   brushRadius?: number; // For manual brush cleanup
   categories?: CategoryCleaningFlags;
+  isManualRegion?: boolean;
 }
 
 export type WorkspaceViewMode = 'cleaned' | 'original' | 'side-by-side' | 'split-slider';
