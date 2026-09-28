@@ -1,4 +1,105 @@
+import * as cvModule from '@techstark/opencv-js';
 import type { BoundingBox, CleaningOptions, TextRegion, RegionCategory, CategoryCleaningFlags } from '../../types';
+
+// Cached OpenCV runtime instance
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let cvInstance: any = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getOpenCV(): Promise<any> {
+  if (cvInstance) return cvInstance;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loadedCv = (cvModule as any)?.default || cvModule;
+
+  if (loadedCv && loadedCv.Mat) {
+    cvInstance = loadedCv;
+    return cvInstance;
+  }
+
+  if (loadedCv && typeof loadedCv.onRuntimeInitialized !== 'undefined') {
+    if (!loadedCv.Mat) {
+      await new Promise<void>((resolve) => {
+        loadedCv.onRuntimeInitialized = () => resolve();
+      });
+    }
+    cvInstance = loadedCv;
+    return cvInstance;
+  }
+
+  cvInstance = loadedCv;
+  return cvInstance;
+}
+
+/**
+ * Inpaints masked text pixels using OpenCV Telea algorithm (`cv.INPAINT_TELEA`).
+ */
+export async function inpaintOpenCVTelea(
+  imgData: ImageData,
+  mask?: Uint8Array,
+  inpaintRadius: number = 3
+): Promise<void> {
+  const cv = await getOpenCV();
+  if (!cv || typeof cv.inpaint !== 'function') {
+    throw new Error('OpenCV Telea is not available in the current environment.');
+  }
+
+  const { width, height, data } = imgData;
+  if (width <= 0 || height <= 0) return;
+
+  // Convert ImageData (RGBA) to cv.Mat
+  const srcMat = cv.matFromImageData(imgData);
+
+  // Convert RGBA to RGB (CV_8UC3) as cv.inpaint expects 8-bit 1 or 3 channel image
+  const srcRgbMat = new cv.Mat();
+  cv.cvtColor(srcMat, srcRgbMat, cv.COLOR_RGBA2RGB);
+
+  // Prepare binary inpaint mask (CV_8UC1)
+  const maskMat = new cv.Mat(height, width, cv.CV_8UC1);
+  const maskBytes = new Uint8Array(width * height);
+
+  let hasMaskPixels = false;
+  if (mask && mask.length === width * height) {
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i]) {
+        maskBytes[i] = 255;
+        hasMaskPixels = true;
+      }
+    }
+  }
+
+  // Fallback: If no candidate text mask pixels were found in the region patch,
+  // mask the interior of the patch (excluding 2px border margin)
+  if (!hasMaskPixels) {
+    const margin = Math.min(2, Math.floor(Math.min(width, height) / 4));
+    for (let y = margin; y < height - margin; y++) {
+      for (let x = margin; x < width - margin; x++) {
+        maskBytes[y * width + x] = 255;
+      }
+    }
+  }
+
+  maskMat.data.set(maskBytes);
+
+  // Perform OpenCV Telea Inpainting
+  const dstRgbMat = new cv.Mat();
+  const teleaFlag = typeof cv.INPAINT_TELEA !== 'undefined' ? cv.INPAINT_TELEA : 1;
+  cv.inpaint(srcRgbMat, maskMat, dstRgbMat, inpaintRadius, teleaFlag);
+
+  // Convert back to RGBA
+  const dstRgbaMat = new cv.Mat();
+  cv.cvtColor(dstRgbMat, dstRgbaMat, cv.COLOR_RGB2RGBA);
+
+  // Write back to imgData.data buffer
+  data.set(dstRgbaMat.data);
+
+  // Free OpenCV Mat memory allocations
+  srcMat.delete();
+  srcRgbMat.delete();
+  maskMat.delete();
+  dstRgbMat.delete();
+  dstRgbaMat.delete();
+}
 
 export interface TextMaskResult {
   mask: Uint8Array;
@@ -539,7 +640,9 @@ export async function cleanImageRegion(
 
   const chosenColor = parseHex(hexColor);
 
-  if (options.method === 'solid-white') {
+  if (options.method === 'opencv-telea') {
+    await inpaintOpenCVTelea(patchImageData, textMaskResult.mask);
+  } else if (options.method === 'solid-white') {
     cleanBubbleText(patchImageData, textMaskResult.mask, chosenColor);
   } else if (options.method === 'border-sample') {
     cleanBubbleText(patchImageData, textMaskResult.mask, textMaskResult.avgBgColor);

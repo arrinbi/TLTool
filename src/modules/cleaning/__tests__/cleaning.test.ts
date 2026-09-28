@@ -4,6 +4,7 @@ import {
   generateTextMask,
   cleanBubbleText,
   inpaintTextMask,
+  inpaintOpenCVTelea,
   isCategoryEnabled,
   cleanAllRegions,
   CLEANING_LIMITATIONS_NOTICE,
@@ -128,6 +129,52 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       expect(resultUrl).not.toBe(initialUrl);
       expect(typeof resultUrl).toBe('string');
       expect(resultUrl.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('OpenCV Telea Cleaning Engine Path', () => {
+    it('inpaintOpenCVTelea removes dark text in white speech bubble cleanly while preserving outer border', async () => {
+      // 80x40 canvas with white speech bubble, black outline, and dark text
+      const canvas = document.createElement('canvas');
+      canvas.width = 80;
+      canvas.height = 40;
+      const ctx = canvas.getContext('2d')!;
+
+      // 1. White speech bubble background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 80, 40);
+
+      // 2. Black speech bubble border along left edge
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, 3, 40);
+
+      // 3. Dark text with anti-aliasing in middle
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(15, 10, 50, 20); // Anti-aliasing fringe
+      ctx.fillStyle = '#101010';
+      ctx.fillRect(17, 12, 46, 16); // Core dark text
+
+      const imgData = ctx.getImageData(0, 0, 80, 40);
+      const textMaskResult = generateTextMask(imgData);
+
+      // Verify text mask detected dark text in center
+      expect(textMaskResult.maskPixelCount).toBeGreaterThan(0);
+
+      // Execute OpenCV Telea Inpainting
+      await inpaintOpenCVTelea(imgData, textMaskResult.mask);
+      ctx.putImageData(imgData, 0, 0);
+
+      // Verify text center at (40, 20) was inpainted cleanly to white (RGB >= 250)
+      const centerPixel = ctx.getImageData(40, 20, 1, 1).data;
+      expect(centerPixel[0]).toBeGreaterThanOrEqual(250);
+      expect(centerPixel[1]).toBeGreaterThanOrEqual(250);
+      expect(centerPixel[2]).toBeGreaterThanOrEqual(250);
+
+      // Verify speech bubble border at (1, 20) is preserved as black
+      const borderPixel = ctx.getImageData(1, 20, 1, 1).data;
+      expect(borderPixel[0]).toBeLessThan(30);
+      expect(borderPixel[1]).toBeLessThan(30);
+      expect(borderPixel[2]).toBeLessThan(30);
     });
   });
 
