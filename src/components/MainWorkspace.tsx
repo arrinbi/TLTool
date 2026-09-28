@@ -40,16 +40,22 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
   const isDraggingSplit = useRef<boolean>(false);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const splitSliderRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  const imgWidth = page?.width || displaySize.width || 800;
+  const imgHeight = page?.height || displaySize.height || 1200;
+  const renderedWidth = Math.round(imgWidth * zoom);
+  const renderedHeight = Math.round(imgHeight * zoom);
 
   // Update display dimensions on window resize or page load
   useEffect(() => {
     const updateDimensions = () => {
-      if (imageRef.current) {
+      if (imageRef.current && imageRef.current.naturalWidth) {
         setDisplaySize({
-          width: imageRef.current.clientWidth,
-          height: imageRef.current.clientHeight,
+          width: imageRef.current.naturalWidth,
+          height: imageRef.current.naturalHeight,
         });
       }
     };
@@ -57,11 +63,13 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
     return () => window.removeEventListener('resize', updateDimensions);
-  }, [page, viewMode, zoom]);
+  }, [page, viewMode]);
 
   const handleSplitMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDraggingSplit.current || !workspaceRef.current) return;
-    const rect = workspaceRef.current.getBoundingClientRect();
+    if (!isDraggingSplit.current) return;
+    const targetRef = splitSliderRef.current || workspaceRef.current;
+    if (!targetRef) return;
+    const rect = targetRef.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
     setSplitPos(pct);
@@ -248,111 +256,125 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
         ref={workspaceRef}
         onMouseMove={handleSplitMouseMove}
         onMouseUp={handleSplitMouseUp}
-        className="flex-1 overflow-auto p-4 flex items-center justify-center relative select-none"
+        className="flex-1 overflow-auto p-4 relative select-none"
       >
-        <div
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
-          className="transition-transform duration-75 max-w-full"
-        >
-          {/* Single Image Views (Cleaned or Original) */}
-          {(viewMode === 'cleaned' || viewMode === 'original') && (
-            <div className="relative inline-block border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-              <img
-                ref={imageRef}
-                src={viewMode === 'cleaned' ? page.cleanedUrl : page.originalUrl}
-                alt={page.name}
-                onLoad={() => {
-                  if (imageRef.current) {
-                    setDisplaySize({
-                      width: imageRef.current.clientWidth,
-                      height: imageRef.current.clientHeight,
-                    });
-                  }
-                }}
-                className="max-h-[80vh] w-auto object-contain block"
+        {/* Single Image Views (Cleaned or Original) */}
+        {(viewMode === 'cleaned' || viewMode === 'original') && (
+          <div
+            style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+            className="relative mx-auto border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
+          >
+            <img
+              ref={imageRef}
+              src={viewMode === 'cleaned' ? page.cleanedUrl : page.originalUrl}
+              alt={page.name}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth && img.naturalHeight) {
+                  setDisplaySize({
+                    width: img.naturalWidth,
+                    height: img.naturalHeight,
+                  });
+                }
+              }}
+              style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+              className="block object-contain"
+            />
+
+            {/* Bounding Box Region Overlay (Active in Cleaned View) */}
+            {viewMode === 'cleaned' && (
+              <RegionOverlay
+                imageWidth={page.width}
+                imageHeight={page.height}
+                displayWidth={renderedWidth}
+                displayHeight={renderedHeight}
+                regions={page.regions}
+                selectedRegionId={selectedRegionId}
+                onSelectRegion={onSelectRegion}
+                onUpdateRegion={onUpdateRegion}
+                onAddRegion={onAddRegion}
+                onDeleteRegion={onDeleteRegion}
+                isDrawingMode={isDrawingMode}
+                manualCategory={manualCategory}
               />
+            )}
+          </div>
+        )}
 
-              {/* Bounding Box Region Overlay (Active in Cleaned View) */}
-              {viewMode === 'cleaned' && displaySize.width > 0 && (
-                <RegionOverlay
-                  imageWidth={page.width}
-                  imageHeight={page.height}
-                  displayWidth={displaySize.width}
-                  displayHeight={displaySize.height}
-                  regions={page.regions}
-                  selectedRegionId={selectedRegionId}
-                  onSelectRegion={onSelectRegion}
-                  onUpdateRegion={onUpdateRegion}
-                  onAddRegion={onAddRegion}
-                  onDeleteRegion={onDeleteRegion}
-                  isDrawingMode={isDrawingMode}
-                  manualCategory={manualCategory}
-                />
-              )}
-            </div>
-          )}
-
-          {/* Side-by-Side Comparison */}
-          {viewMode === 'side-by-side' && (
-            <div className="flex gap-4 items-center justify-center max-w-full">
-              <div className="flex flex-col items-center">
-                <span className="text-[11px] font-semibold text-slate-400 mb-1">Original</span>
-                <div className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-                  <img
-                    src={page.originalUrl}
-                    alt="Original"
-                    className="max-h-[75vh] w-auto object-contain block"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-[11px] font-semibold text-emerald-400 mb-1">Cleaned Preview</span>
-                <div className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-                  <img
-                    src={page.cleanedUrl}
-                    alt="Cleaned"
-                    className="max-h-[75vh] w-auto object-contain block"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Split Comparison Slider View */}
-          {viewMode === 'split-slider' && (
-            <div className="relative inline-block border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900">
-              {/* Cleaned Image Underneath */}
-              <img
-                src={page.cleanedUrl}
-                alt="Cleaned"
-                className="max-h-[80vh] w-auto object-contain block"
-              />
-
-              {/* Original Image Clipped Above */}
+        {/* Side-by-Side Comparison */}
+        {viewMode === 'side-by-side' && (
+          <div className="flex gap-4 items-start justify-center mx-auto min-w-max">
+            <div className="flex flex-col items-center">
+              <span className="text-[11px] font-semibold text-slate-400 mb-1">Original</span>
               <div
-                style={{ clipPath: `polygon(0 0, ${splitPos}% 0, ${splitPos}% 100%, 0 100%)` }}
-                className="absolute inset-0"
+                style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
               >
                 <img
                   src={page.originalUrl}
                   alt="Original"
-                  className="max-h-[80vh] w-auto object-contain block"
+                  style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                  className="block object-contain"
                 />
               </div>
-
-              {/* Interactive Divider Line */}
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[11px] font-semibold text-emerald-400 mb-1">Cleaned Preview</span>
               <div
-                style={{ left: `${splitPos}%` }}
-                onMouseDown={() => (isDraggingSplit.current = true)}
-                className="absolute top-0 bottom-0 w-1 bg-indigo-500 cursor-ew-resize flex items-center justify-center shadow-lg"
+                style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                className="border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
               >
-                <div className="w-6 h-6 bg-indigo-600 rounded-full border-2 border-white flex items-center justify-center shadow">
-                  <Maximize2 className="w-3 h-3 text-white rotate-45" />
-                </div>
+                <img
+                  src={page.cleanedUrl}
+                  alt="Cleaned"
+                  style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                  className="block object-contain"
+                />
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Split Comparison Slider View */}
+        {viewMode === 'split-slider' && (
+          <div
+            ref={splitSliderRef}
+            style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+            className="relative mx-auto border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
+          >
+            {/* Cleaned Image Underneath */}
+            <img
+              src={page.cleanedUrl}
+              alt="Cleaned"
+              style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+              className="block object-contain"
+            />
+
+            {/* Original Image Clipped Above */}
+            <div
+              style={{ clipPath: `polygon(0 0, ${splitPos}% 0, ${splitPos}% 100%, 0 100%)` }}
+              className="absolute inset-0"
+            >
+              <img
+                src={page.originalUrl}
+                alt="Original"
+                style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+                className="block object-contain"
+              />
+            </div>
+
+            {/* Interactive Divider Line */}
+            <div
+              style={{ left: `${splitPos}%` }}
+              onMouseDown={() => (isDraggingSplit.current = true)}
+              className="absolute top-0 bottom-0 w-1 bg-indigo-500 cursor-ew-resize flex items-center justify-center shadow-lg"
+            >
+              <div className="w-6 h-6 bg-indigo-600 rounded-full border-2 border-white flex items-center justify-center shadow">
+                <Maximize2 className="w-3 h-3 text-white rotate-45" />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
