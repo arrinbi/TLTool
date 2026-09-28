@@ -33,6 +33,9 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
 
+  const activePointersRef = useRef<Set<number>>(new Set());
+  const isMultiTouchRef = useRef<boolean>(false);
+
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
 
@@ -51,8 +54,44 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     return { x, y };
   };
 
+  const cancelDrawingAndCapture = (target: HTMLDivElement) => {
+    setIsDrawing(false);
+    setDrawStart(null);
+    setDrawCurrent(null);
+
+    activePointersRef.current.forEach((id) => {
+      try {
+        if (target.hasPointerCapture(id)) {
+          target.releasePointerCapture(id);
+        }
+      } catch {
+        // Fallback
+      }
+    });
+  };
+
+  const getTouchCount = (e: React.PointerEvent<HTMLDivElement>) => {
+    const syntheticTouches = (e as unknown as { touches?: TouchList }).touches;
+    const nativeEvent = e.nativeEvent as unknown as { touches?: TouchList; targetTouches?: TouchList };
+    const touches = syntheticTouches || nativeEvent?.touches || nativeEvent?.targetTouches;
+    if (touches && typeof touches.length === 'number') {
+      return touches.length;
+    }
+    return activePointersRef.current.size;
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
+
+    activePointersRef.current.add(e.pointerId);
+
+    const touchCount = getTouchCount(e);
+
+    if (touchCount >= 2 || isMultiTouchRef.current) {
+      isMultiTouchRef.current = true;
+      cancelDrawingAndCapture(e.currentTarget);
+      return;
+    }
 
     if (isDrawingMode) {
       try {
@@ -71,20 +110,32 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawing || !containerRef.current || !drawStart) return;
+    const touchCount = getTouchCount(e);
+
+    if (touchCount >= 2) {
+      isMultiTouchRef.current = true;
+      cancelDrawingAndCapture(e.currentTarget);
+      return;
+    }
+
+    if (isMultiTouchRef.current || !isDrawing || !containerRef.current || !drawStart) return;
     setDrawCurrent(pointerToImage(e));
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDrawing) {
-      try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        // Ignore fallback
-      }
+    activePointersRef.current.delete(e.pointerId);
 
+    const remainingTouches = getTouchCount(e);
+
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignore fallback
+    }
+
+    if (!isMultiTouchRef.current && isDrawing) {
       const currentPos = pointerToImage(e);
 
       if (drawStart) {
@@ -99,37 +150,53 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         }
       }
     }
+
     setIsDrawing(false);
     setDrawStart(null);
     setDrawCurrent(null);
+
+    if (remainingTouches === 0) {
+      isMultiTouchRef.current = false;
+    }
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDrawing) {
-      try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        // Ignore fallback
+    activePointersRef.current.delete(e.pointerId);
+
+    const remainingTouches = getTouchCount(e);
+
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
       }
+    } catch {
+      // Ignore fallback
     }
+
     setIsDrawing(false);
     setDrawStart(null);
     setDrawCurrent(null);
+
+    if (remainingTouches === 0) {
+      isMultiTouchRef.current = false;
+    }
   };
 
   return (
     <div
       ref={containerRef}
       className={`absolute inset-0 z-10 ${
-        isDrawingMode ? 'cursor-crosshair touch-none' : 'cursor-default'
+        isDrawingMode ? 'cursor-crosshair touch-manipulation' : 'cursor-default'
       }`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      style={{ width: displayWidth, height: displayHeight, touchAction: isDrawingMode ? 'none' : 'auto' }}
+      style={{
+        width: displayWidth,
+        height: displayHeight,
+        touchAction: isDrawingMode ? 'pan-x pan-y pinch-zoom' : 'auto',
+      }}
     >
       {/* Existing Regions */}
       {regions.map((region) => {

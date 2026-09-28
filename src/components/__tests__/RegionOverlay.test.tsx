@@ -188,4 +188,147 @@ describe('RegionOverlay manual selection coordinate mapping', () => {
       undefined
     );
   });
+
+  it('prevents manual region creation when starting a two-finger touch gesture', () => {
+    const onAddRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={3000}
+        displayWidth={500}
+        displayHeight={1500}
+        regions={[]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={onAddRegion}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={true}
+        manualCategory="bubble-oval"
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+
+    vi.spyOn(overlayEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 500,
+      height: 1500,
+      right: 500,
+      bottom: 1500,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    const mockTouches = [
+      { clientX: 100, clientY: 200 },
+      { clientX: 200, clientY: 300 },
+    ];
+
+    // Pointer down with two touches present in target / nativeEvent or multiple pointerIds
+    fireEvent.pointerDown(overlayEl, {
+      clientX: 100,
+      clientY: 200,
+      pointerId: 1,
+      targetTouches: mockTouches,
+      touches: mockTouches,
+    });
+    fireEvent.pointerDown(overlayEl, {
+      clientX: 200,
+      clientY: 300,
+      pointerId: 2,
+      targetTouches: mockTouches,
+      touches: mockTouches,
+    });
+
+    fireEvent.pointerUp(overlayEl, {
+      clientX: 300,
+      clientY: 600,
+      pointerId: 1,
+      touches: [],
+    });
+
+    expect(onAddRegion).not.toHaveBeenCalled();
+  });
+
+  it('cancels active drawing when a second touch pointer is added', () => {
+    const onAddRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={3000}
+        displayWidth={500}
+        displayHeight={1500}
+        regions={[]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={onAddRegion}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={true}
+        manualCategory="bubble-oval"
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+
+    vi.spyOn(overlayEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 500,
+      height: 1500,
+      right: 500,
+      bottom: 1500,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // 1st finger down
+    fireEvent.pointerDown(overlayEl, {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 1,
+      touches: [{ clientX: 100, clientY: 100 }],
+    });
+
+    // Move first finger
+    fireEvent.pointerMove(overlayEl, {
+      clientX: 200,
+      clientY: 200,
+      pointerId: 1,
+      touches: [{ clientX: 200, clientY: 200 }],
+    });
+
+    // 2nd finger down
+    fireEvent.pointerDown(overlayEl, {
+      clientX: 250,
+      clientY: 250,
+      pointerId: 2,
+      touches: [
+        { clientX: 200, clientY: 200 },
+        { clientX: 250, clientY: 250 },
+      ],
+    });
+
+    // Pointer up for finger 1
+    fireEvent.pointerUp(overlayEl, {
+      clientX: 300,
+      clientY: 300,
+      pointerId: 1,
+      touches: [{ clientX: 250, clientY: 250 }],
+    });
+
+    // Pointer up for finger 2
+    fireEvent.pointerUp(overlayEl, {
+      clientX: 250,
+      clientY: 250,
+      pointerId: 2,
+      touches: [],
+    });
+
+    expect(onAddRegion).not.toHaveBeenCalled();
+  });
 });
