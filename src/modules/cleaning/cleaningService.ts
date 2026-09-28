@@ -230,7 +230,7 @@ export function sampleBorderColor(
  * Analyzes candidate bounding box image patch and returns a binary mask (1 = text stroke, 0 = artwork/bg).
  * Applies connected component and geometric shape constraints to preserve line art, hair, faces, clothing, and bubble borders.
  */
-export function generateTextMask(imgData: ImageData): TextMaskResult {
+export function generateTextMask(imgData: ImageData, isManualRegion: boolean = false): TextMaskResult {
   const { width, height, data } = imgData;
   const totalPixels = width * height;
 
@@ -424,6 +424,9 @@ export function generateTextMask(imgData: ImageData): TextMaskResult {
 
         let isTextComponent = true;
 
+        // For manually selected regions, edge-touching is expected because user draws tight bounding boxes
+        const checkTouchesEdge = isManualRegion ? false : touchesEdge;
+
         // Rule A: Tiny isolated noise pixels (< 3px) -> Discard
         if (pixelCount < 3) {
           isTextComponent = false;
@@ -435,7 +438,7 @@ export function generateTextMask(imgData: ImageData): TextMaskResult {
         }
 
         // Rule C: Components touching image edge with continuous long dimension -> Discard (bubble outline or entering hair/artwork)
-        if (touchesEdge && (compWidth > width * 0.5 || compHeight > height * 0.5)) {
+        if (checkTouchesEdge && (compWidth > width * 0.5 || compHeight > height * 0.5)) {
           isTextComponent = false;
         }
 
@@ -445,7 +448,7 @@ export function generateTextMask(imgData: ImageData): TextMaskResult {
             isTextComponent = false;
           }
           // Components touching edge in wild artwork -> Discard unless small
-          if (touchesEdge && pixelCount > 12) {
+          if (checkTouchesEdge && pixelCount > 12) {
             isTextComponent = false;
           }
           // Overly large component in wild artwork -> Discard (large shadow/hair area)
@@ -454,7 +457,7 @@ export function generateTextMask(imgData: ImageData): TextMaskResult {
           }
         } else {
           // Inside uniform speech bubble: keep bubble border intact
-          if (touchesEdge && (compWidth > width * 0.4 || compHeight > height * 0.4)) {
+          if (checkTouchesEdge && (compWidth > width * 0.4 || compHeight > height * 0.4)) {
             isTextComponent = false;
           }
         }
@@ -621,7 +624,7 @@ export async function cleanImageRegion(
   }
 
   const patchImageData = ctx.getImageData(targetX, targetY, targetW, targetH);
-  const textMaskResult = generateTextMask(patchImageData);
+  const textMaskResult = generateTextMask(patchImageData, options.isManualRegion ?? false);
 
   let hexColor = options.fillColor;
   if (!hexColor) {
@@ -707,7 +710,11 @@ export async function cleanAllRegions(
   let activeUrl = currentCleanedUrl;
   for (const region of regions) {
     if (isCategoryEnabled(region.category, options.categories)) {
-      activeUrl = await cleanImageRegion(activeUrl, region.bbox, options);
+      const effectiveOptions: CleaningOptions = {
+        ...options,
+        isManualRegion: options.isManualRegion ?? region.isManual ?? false,
+      };
+      activeUrl = await cleanImageRegion(activeUrl, region.bbox, effectiveOptions);
     }
   }
   return activeUrl;

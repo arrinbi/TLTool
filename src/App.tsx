@@ -205,6 +205,7 @@ export function App() {
       text: '',
       confidence: 100,
       isCleaned: false,
+      isManual: true,
       category: category || 'bubble-oval',
     };
 
@@ -240,7 +241,12 @@ export function App() {
       prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true } : p))
     );
 
-    const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, options);
+    const effectiveOptions: CleaningOptions = {
+      ...options,
+      isManualRegion: options.isManualRegion ?? targetRegion.isManual,
+    };
+
+    const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, effectiveOptions);
     const updatedRegions = selectedPage.regions.map((r) =>
       r.id === regionId ? { ...r, isCleaned: true, cleaningMethod: options.method } : r
     );

@@ -403,6 +403,34 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       expect(maskResult.mask[14 * 40 + 14]).toBe(1);
     });
 
+    it('Scenario 8: Manually selected region around tight text touching patch boundary is preserved in mask', () => {
+      // 50x50 canvas inside uniform speech bubble
+      // Dark text stroke touching left edge x=0..15, y=15..35 (compWidth=16, compHeight=21)
+      // compWidth > 50 * 0.3 = 15 -> compWidth > width * 0.3 is true, touchesEdge is true
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d')!;
+
+      // Uniform white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 50, 50);
+
+      // Dark text stroke touching top-left border x=0..16, y=0..21
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, 17, 22);
+
+      const imgData = ctx.getImageData(0, 0, 50, 50);
+
+      // Automatic OCR region (isManualRegion = false) -> rejected because touchesEdge && compWidth > 50 * 0.3 = 15
+      const autoMaskResult = generateTextMask(imgData, false);
+      expect(autoMaskResult.mask[10 * 50 + 10]).toBe(0);
+
+      // Manually selected region (isManualRegion = true) -> preserved because touchesEdge rejection is bypassed
+      const manualMaskResult = generateTextMask(imgData, true);
+      expect(manualMaskResult.mask[10 * 50 + 10]).toBe(1);
+    });
+
     it('Scenario 7: False positive prevention on standalone hair / line art without text', () => {
       // 50x50 canvas containing ONLY character hair lines and no text
       const canvas = document.createElement('canvas');
