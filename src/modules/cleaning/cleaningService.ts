@@ -203,7 +203,7 @@ export function generateTextMask(imgData: ImageData): TextMaskResult {
   }
 
   const borderStdDev = borderCount > 0 ? Math.sqrt(borderVarianceSum / borderCount) : 0;
-  const isUniformBackground = borderStdDev < 22; // Low variance in trimmed border = uniform background (speech bubble)
+  const isUniformBackground = borderStdDev < 15; // Low variance in trimmed border = uniform background (speech bubble)
 
   // 2. Identify candidate text pixels
   const candidateMask = new Uint8Array(totalPixels);
@@ -223,7 +223,7 @@ export function generateTextMask(imgData: ImageData): TextMaskResult {
           (b - avgB) * (b - avgB)
         );
 
-        if (colorDist > 45) {
+        if (colorDist > 25) {
           candidateMask[y * width + x] = 1;
         }
       }
