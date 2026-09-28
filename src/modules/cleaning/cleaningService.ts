@@ -324,7 +324,7 @@ export function generateTextMask(imgData: ImageData, isManualRegion: boolean = f
           (b - avgB) * (b - avgB)
         );
 
-        if (colorDist > 25) {
+        if (colorDist > 15) {
           candidateMask[y * width + x] = 1;
         }
       }
@@ -471,7 +471,7 @@ export function generateTextMask(imgData: ImageData, isManualRegion: boolean = f
     }
   }
 
-  // 4. Minimal 1-pixel Morphological Dilation to capture anti-aliasing text edges without expanding into artwork
+  // 4. 2-pixel Morphological Dilation to capture anti-aliasing text edges and small text halos without expanding into artwork
   const finalMask = new Uint8Array(totalPixels);
   let maskPixelCount = 0;
 
@@ -479,10 +479,10 @@ export function generateTextMask(imgData: ImageData, isManualRegion: boolean = f
     for (let x = 0; x < width; x++) {
       const pos = y * width + x;
       if (filteredMask[pos] === 1) {
-        for (let dy = -1; dy <= 1; dy++) {
+        for (let dy = -2; dy <= 2; dy++) {
           const ny = y + dy;
           if (ny < 0 || ny >= height) continue;
-          for (let dx = -1; dx <= 1; dx++) {
+          for (let dx = -2; dx <= 2; dx++) {
             const nx = x + dx;
             if (nx < 0 || nx >= width) continue;
 

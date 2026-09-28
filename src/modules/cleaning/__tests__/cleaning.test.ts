@@ -216,6 +216,36 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       expect(borderPixel[0]).toBeLessThan(50);
     });
 
+    it('includes subtle anti-aliased text pixels (color distance 15-25) and 2-pixel dilation halo in uniform text mask', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d')!;
+
+      // 1. Pure white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 50, 50);
+
+      // 2. Dark text core at (20, 20) size 10x10
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(20, 20, 10, 10);
+
+      // 3. Very light gray anti-aliased pixel at (18, 18): RGB (242, 242, 242)
+      // Color distance from white (255,255,255) = sqrt(13^2 * 3) ≈ 22.51
+      // Old threshold (25) excluded this pixel from candidateMask; new threshold (15) includes it.
+      ctx.fillStyle = '#f2f2f2';
+      ctx.fillRect(18, 18, 1, 1);
+
+      const imgData = ctx.getImageData(0, 0, 50, 50);
+      const maskResult = generateTextMask(imgData, true);
+
+      // Subtle anti-aliased pixel at (18, 18) is included in mask
+      expect(maskResult.mask[18 * 50 + 18]).toBe(1);
+
+      // 2-pixel dilation covers pixel at distance 2: (18, 20)
+      expect(maskResult.mask[20 * 50 + 18]).toBe(1);
+    });
+
     it('Scenario 1b: Manually selected text region inside simple white speech bubble with dark text and anti-aliasing', () => {
       // 80x40 canvas simulating a manually selected region around text inside a simple white speech bubble
       const canvas = document.createElement('canvas');
