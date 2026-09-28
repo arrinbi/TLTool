@@ -65,6 +65,7 @@ export interface CleaningOptions {
   brushRadius?: number; // For manual brush cleanup
   categories?: CategoryCleaningFlags;
   isManualRegion?: boolean;
+  category?: RegionCategory;
 }
 
 export type WorkspaceViewMode = 'cleaned' | 'original' | 'side-by-side' | 'split-slider';

@@ -482,5 +482,37 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       // Hair strands spanning full height should produce 0 text mask pixels
       expect(maskResult.maskPixelCount).toBe(0);
     });
+
+    it('Scenario 9: Manually selected text-outside region over clothing inpainting removes text while preserving surrounding clothing color', async () => {
+      // 60x60 canvas simulating dark clothing (navy blue #1e293b / RGB 30, 41, 59)
+      // with white floating text outside speech bubble in middle
+      const canvas = document.createElement('canvas');
+      canvas.width = 60;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d')!;
+
+      // Navy clothing background
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, 60, 60);
+
+      // White floating text stroke in center (25, 25, 10, 10)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(25, 25, 10, 10);
+
+      const imgData = ctx.getImageData(0, 0, 60, 60);
+      const maskResult = generateTextMask(imgData, true, 'text-outside');
+
+      // Verify white text stroke is masked
+      expect(maskResult.mask[28 * 60 + 28]).toBe(1);
+
+      // Execute OpenCV Telea Inpainting on text-outside mask
+      await inpaintOpenCVTelea(imgData, maskResult.mask);
+      ctx.putImageData(imgData, 0, 0);
+
+      // Center pixel where white text was should now be inpainted close to navy clothing color (R < 60, B > 30)
+      const inpaintedPixel = ctx.getImageData(28, 28, 1, 1).data;
+      expect(inpaintedPixel[0]).toBeLessThan(60); // Red channel preserved as dark
+      expect(inpaintedPixel[2]).toBeGreaterThan(30); // Blue channel preserved as navy
+    });
   });
 });

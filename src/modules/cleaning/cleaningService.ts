@@ -68,15 +68,9 @@ export async function inpaintOpenCVTelea(
     }
   }
 
-  // Fallback: If no candidate text mask pixels were found in the region patch,
-  // mask the interior of the patch (excluding 2px border margin)
+  // If no candidate text mask pixels were found, return early without modifying the image
   if (!hasMaskPixels) {
-    const margin = Math.min(2, Math.floor(Math.min(width, height) / 4));
-    for (let y = margin; y < height - margin; y++) {
-      for (let x = margin; x < width - margin; x++) {
-        maskBytes[y * width + x] = 255;
-      }
-    }
+    return;
   }
 
   maskMat.data.set(maskBytes);
@@ -230,7 +224,11 @@ export function sampleBorderColor(
  * Analyzes candidate bounding box image patch and returns a binary mask (1 = text stroke, 0 = artwork/bg).
  * Applies connected component and geometric shape constraints to preserve line art, hair, faces, clothing, and bubble borders.
  */
-export function generateTextMask(imgData: ImageData, isManualRegion: boolean = false): TextMaskResult {
+export function generateTextMask(
+  imgData: ImageData,
+  isManualRegion: boolean = false,
+  category?: RegionCategory
+): TextMaskResult {
   const { width, height, data } = imgData;
   const totalPixels = width * height;
 
@@ -304,7 +302,8 @@ export function generateTextMask(imgData: ImageData, isManualRegion: boolean = f
   }
 
   const borderStdDev = borderCount > 0 ? Math.sqrt(borderVarianceSum / borderCount) : 0;
-  const isUniformBackground = borderStdDev < 15; // Low variance in trimmed border = uniform background (speech bubble)
+  // If category is text-outside, treat as artwork mode rather than uniform speech bubble
+  const isUniformBackground = category === 'text-outside' ? false : borderStdDev < 15;
 
   // 2. Identify candidate text pixels
   const candidateMask = new Uint8Array(totalPixels);
@@ -357,9 +356,43 @@ export function generateTextMask(imgData: ImageData, isManualRegion: boolean = f
           }
         }
 
-        // Candidate pixel must be dark relative to surrounding local maximum luminance
-        if (localMaxLum - lum > 45) {
-          candidateMask[y * width + x] = 1;
+        // Find max luminance and min luminance in local window
+        let localMinLum = lum;
+        for (let dy = -searchRadius; dy <= searchRadius; dy += 2) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= height) continue;
+          for (let dx = -searchRadius; dx <= searchRadius; dx += 2) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= width) continue;
+            const nIdx = (ny * width + nx) * 4;
+            const nLum = 0.299 * data[nIdx] + 0.587 * data[nIdx + 1] + 0.114 * data[nIdx + 2];
+            if (nLum < localMinLum) {
+              localMinLum = nLum;
+            }
+          }
+        }
+
+        // Candidate pixel can be dark relative to local maximum (dark text on light artwork)
+        // or light relative to local minimum (white/light text on dark clothing/hair/artwork)
+        if (localMaxLum - lum > 35 || lum - localMinLum > 35) {
+          // Verify contrast against local average to avoid expanding onto surrounding background
+          let localSumLum = 0;
+          let localCount = 0;
+          for (let dy = -searchRadius; dy <= searchRadius; dy += 2) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= height) continue;
+            for (let dx = -searchRadius; dx <= searchRadius; dx += 2) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= width) continue;
+              const nIdx = (ny * width + nx) * 4;
+              localSumLum += 0.299 * data[nIdx] + 0.587 * data[nIdx + 1] + 0.114 * data[nIdx + 2];
+              localCount++;
+            }
+          }
+          const localAvgLum = localCount > 0 ? localSumLum / localCount : lum;
+          if (Math.abs(lum - localAvgLum) > 20) {
+            candidateMask[y * width + x] = 1;
+          }
         }
       }
     }
@@ -624,7 +657,11 @@ export async function cleanImageRegion(
   }
 
   const patchImageData = ctx.getImageData(targetX, targetY, targetW, targetH);
-  const textMaskResult = generateTextMask(patchImageData, options.isManualRegion ?? false);
+  const textMaskResult = generateTextMask(
+    patchImageData,
+    options.isManualRegion ?? false,
+    options.category
+  );
 
   let hexColor = options.fillColor;
   if (!hexColor) {
@@ -643,7 +680,7 @@ export async function cleanImageRegion(
 
   const chosenColor = parseHex(hexColor);
 
-  if (options.method === 'opencv-telea') {
+  if (options.category === 'text-outside' || options.method === 'opencv-telea') {
     await inpaintOpenCVTelea(patchImageData, textMaskResult.mask);
   } else if (options.method === 'solid-white') {
     cleanBubbleText(patchImageData, textMaskResult.mask, chosenColor);
@@ -654,7 +691,7 @@ export async function cleanImageRegion(
     if (textMaskResult.isUniformBackground) {
       cleanBubbleText(patchImageData, textMaskResult.mask, textMaskResult.avgBgColor);
     } else {
-      inpaintTextMask(patchImageData, textMaskResult.mask);
+      await inpaintOpenCVTelea(patchImageData, textMaskResult.mask);
     }
   }
 
@@ -713,6 +750,7 @@ export async function cleanAllRegions(
       const effectiveOptions: CleaningOptions = {
         ...options,
         isManualRegion: options.isManualRegion ?? region.isManual ?? false,
+        category: region.category,
       };
       activeUrl = await cleanImageRegion(activeUrl, region.bbox, effectiveOptions);
     }
