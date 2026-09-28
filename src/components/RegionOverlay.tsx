@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { TextRegion, BoundingBox, RegionCategory } from '../types';
 
 interface RegionOverlayProps {
@@ -40,6 +40,16 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
 
+  // Reset overlay state whenever display dimensions change (e.g. zoom level changes)
+  useEffect(() => {
+    setIsDrawing(false);
+    setIsMultiTouch(false);
+    setDrawStart(null);
+    setDrawCurrent(null);
+    activePointersRef.current.clear();
+    isMultiTouchRef.current = false;
+  }, [displayWidth, displayHeight]);
+
   // Convert pointer event client coordinates directly into original image pixel coordinates
   const pointerToImage = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current || !imageWidth || !imageHeight) return { x: 0, y: 0 };
@@ -71,20 +81,32 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     });
   };
 
-  const getTouchCount = (e: React.PointerEvent<HTMLDivElement>) => {
+  const getNativeTouchCount = (e: React.PointerEvent<HTMLDivElement>) => {
     const syntheticTouches = (e as unknown as { touches?: TouchList }).touches;
     const nativeEvent = e.nativeEvent as unknown as { touches?: TouchList; targetTouches?: TouchList };
     const touches = syntheticTouches || nativeEvent?.touches || nativeEvent?.targetTouches;
-    const touchesLength = touches && typeof touches.length === 'number' ? touches.length : 0;
-    return Math.max(touchesLength, activePointersRef.current.size);
+    if (touches && typeof touches.length === 'number') {
+      return touches.length;
+    }
+    return 0;
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
 
-    activePointersRef.current.add(e.pointerId);
+    const nativeTouches = getNativeTouchCount(e);
 
-    const touchCount = getTouchCount(e);
+    // If this is a single touch or mouse/pen, clear any stale pointer IDs from earlier gestures
+    if (nativeTouches === 1 || e.pointerType === 'mouse' || e.pointerType === 'pen') {
+      activePointersRef.current.clear();
+      activePointersRef.current.add(e.pointerId);
+      isMultiTouchRef.current = false;
+      setIsMultiTouch(false);
+    } else {
+      activePointersRef.current.add(e.pointerId);
+    }
+
+    const touchCount = Math.max(nativeTouches, activePointersRef.current.size);
 
     if (touchCount >= 2 || isMultiTouchRef.current) {
       isMultiTouchRef.current = true;
@@ -110,7 +132,8 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const touchCount = getTouchCount(e);
+    const nativeTouches = getNativeTouchCount(e);
+    const touchCount = Math.max(nativeTouches, activePointersRef.current.size);
 
     if (touchCount >= 2) {
       isMultiTouchRef.current = true;
@@ -126,7 +149,8 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     activePointersRef.current.delete(e.pointerId);
 
-    const remainingTouches = getTouchCount(e);
+    const nativeTouches = getNativeTouchCount(e);
+    const remainingTouches = nativeTouches > 0 ? nativeTouches : activePointersRef.current.size;
 
     try {
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -145,8 +169,16 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         const width = Math.abs(currentPos.x - drawStart.x);
         const height = Math.abs(currentPos.y - drawStart.y);
 
-        // Only create if box has a minimum size
-        if (width > 10 && height > 10) {
+        const screenWidth = width * scaleX;
+        const screenHeight = height * scaleY;
+
+        // Minimum box size check: at least 10 image pixels or 10 screen pixels (and at least 5px in both)
+        if (
+          (width > 10 || screenWidth >= 10) &&
+          (height > 10 || screenHeight >= 10) &&
+          screenWidth >= 5 &&
+          screenHeight >= 5
+        ) {
           onAddRegion({ x: minX, y: minY, width, height }, manualCategory);
         }
       }
@@ -157,6 +189,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     setDrawCurrent(null);
 
     if (remainingTouches === 0) {
+      activePointersRef.current.clear();
       isMultiTouchRef.current = false;
       setIsMultiTouch(false);
     }
@@ -165,7 +198,8 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     activePointersRef.current.delete(e.pointerId);
 
-    const remainingTouches = getTouchCount(e);
+    const nativeTouches = getNativeTouchCount(e);
+    const remainingTouches = nativeTouches > 0 ? nativeTouches : activePointersRef.current.size;
 
     try {
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -180,6 +214,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     setDrawCurrent(null);
 
     if (remainingTouches === 0) {
+      activePointersRef.current.clear();
       isMultiTouchRef.current = false;
       setIsMultiTouch(false);
     }
