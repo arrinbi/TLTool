@@ -331,4 +331,54 @@ describe('RegionOverlay manual selection coordinate mapping', () => {
 
     expect(onAddRegion).not.toHaveBeenCalled();
   });
+
+  it('does not create a region on a simple tap without dragging', () => {
+    const onAddRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={3000}
+        displayWidth={500}
+        displayHeight={1500}
+        regions={[]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={onAddRegion}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={true}
+        manualCategory="bubble-oval"
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+
+    vi.spyOn(overlayEl, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 200,
+      width: 500,
+      height: 1500,
+      right: 600,
+      bottom: 1700,
+      x: 100,
+      y: 200,
+      toJSON: () => {},
+    });
+
+    // Pointer down at clientX: 200, clientY: 500
+    fireEvent.pointerDown(overlayEl, {
+      clientX: 200,
+      clientY: 500,
+      pointerId: 1,
+    });
+
+    // Immediate pointer up at clientX: 200, clientY: 500 (or minimal move < 10px)
+    fireEvent.pointerUp(overlayEl, {
+      clientX: 202,
+      clientY: 502,
+      pointerId: 1,
+    });
+
+    expect(onAddRegion).not.toHaveBeenCalled();
+  });
 });

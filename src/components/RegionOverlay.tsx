@@ -30,6 +30,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isMultiTouch, setIsMultiTouch] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
 
@@ -74,10 +75,8 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     const syntheticTouches = (e as unknown as { touches?: TouchList }).touches;
     const nativeEvent = e.nativeEvent as unknown as { touches?: TouchList; targetTouches?: TouchList };
     const touches = syntheticTouches || nativeEvent?.touches || nativeEvent?.targetTouches;
-    if (touches && typeof touches.length === 'number') {
-      return touches.length;
-    }
-    return activePointersRef.current.size;
+    const touchesLength = touches && typeof touches.length === 'number' ? touches.length : 0;
+    return Math.max(touchesLength, activePointersRef.current.size);
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -89,6 +88,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 
     if (touchCount >= 2 || isMultiTouchRef.current) {
       isMultiTouchRef.current = true;
+      setIsMultiTouch(true);
       cancelDrawingAndCapture(e.currentTarget);
       return;
     }
@@ -114,6 +114,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 
     if (touchCount >= 2) {
       isMultiTouchRef.current = true;
+      setIsMultiTouch(true);
       cancelDrawingAndCapture(e.currentTarget);
       return;
     }
@@ -157,6 +158,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 
     if (remainingTouches === 0) {
       isMultiTouchRef.current = false;
+      setIsMultiTouch(false);
     }
   };
 
@@ -179,6 +181,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 
     if (remainingTouches === 0) {
       isMultiTouchRef.current = false;
+      setIsMultiTouch(false);
     }
   };
 
@@ -186,7 +189,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     <div
       ref={containerRef}
       className={`absolute inset-0 z-10 ${
-        isDrawingMode ? 'cursor-crosshair touch-manipulation' : 'cursor-default'
+        isDrawingMode ? 'cursor-crosshair' : 'cursor-default'
       }`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -195,7 +198,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
       style={{
         width: displayWidth,
         height: displayHeight,
-        touchAction: isDrawingMode ? 'pan-x pan-y pinch-zoom' : 'auto',
+        touchAction: isDrawingMode && !isMultiTouch ? 'none' : 'pan-x pan-y pinch-zoom',
       }}
     >
       {/* Existing Regions */}
