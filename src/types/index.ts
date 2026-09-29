@@ -5,7 +5,7 @@ export interface BoundingBox {
   height: number; // Height in pixels
 }
 
-export type CleaningMethod = 'smart-fill' | 'solid-white' | 'border-sample' | 'brush' | 'opencv-telea';
+export type CleaningMethod = 'smart-fill' | 'solid-white' | 'border-sample' | 'brush' | 'opencv-telea' | 'lama';
 
 export type RegionCategory = 'bubble-oval' | 'bubble-rect' | 'text-outside' | 'sfx';
 
