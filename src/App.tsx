@@ -264,7 +264,10 @@ export function App() {
         return updatedPage;
       })
     );
-  }, [selectedPage]);
+    if (selectedRegionId === regionId) {
+      setSelectedRegionId(null);
+    }
+  }, [selectedPage, selectedRegionId]);
 
   // Clean all regions in pass
   const handleCleanAllRegions = useCallback(async (options: CleaningOptions) => {
@@ -293,6 +296,7 @@ export function App() {
         return updatedPage;
       })
     );
+    setSelectedRegionId(null);
   }, [selectedPage]);
 
   // Undo / Redo

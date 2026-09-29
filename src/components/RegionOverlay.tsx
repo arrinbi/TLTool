@@ -132,7 +132,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
       style={{ width: displayWidth, height: displayHeight, touchAction: isDrawingMode ? 'none' : 'auto' }}
     >
       {/* Existing Regions */}
-      {regions.map((region) => {
+      {regions.filter((region) => !region.isCleaned).map((region) => {
         const isSelected = region.id === selectedRegionId;
         const left = region.bbox.x * scaleX;
         const top = region.bbox.y * scaleY;
@@ -156,22 +156,16 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
             className={`group rounded border-2 transition-colors cursor-pointer ${
               isSelected
                 ? 'border-indigo-400 bg-indigo-500/25 ring-2 ring-indigo-400/50'
-                : region.isCleaned
-                ? 'border-emerald-500/60 bg-emerald-500/10 hover:border-emerald-400'
                 : 'border-amber-400/80 bg-amber-400/15 hover:border-amber-300'
             }`}
           >
             {/* Tag / Status label */}
             <div
               className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white shadow-sm flex items-center gap-1 ${
-                isSelected
-                  ? 'bg-indigo-600'
-                  : region.isCleaned
-                  ? 'bg-emerald-600'
-                  : 'bg-amber-600'
+                isSelected ? 'bg-indigo-600' : 'bg-amber-600'
               }`}
             >
-              <span>{region.isCleaned ? 'Cleaned' : 'Text'}</span>
+              <span>Text</span>
             </div>
           </div>
         );
