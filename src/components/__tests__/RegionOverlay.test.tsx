@@ -326,6 +326,90 @@ describe('RegionOverlay manual selection coordinate mapping', () => {
     expect(onAddRegion).toHaveBeenCalledTimes(2);
   });
 
+  it('allows painting with Brush tool to create brush region with brushMask', () => {
+    const onAddRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={2000}
+        displayWidth={500}
+        displayHeight={1000}
+        regions={[]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={onAddRegion}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={true}
+        manualTool="brush"
+        brushSize={20}
+        manualCategory="bubble-oval"
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+
+    vi.spyOn(overlayEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 500,
+      height: 1000,
+      right: 500,
+      bottom: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Pointer down at clientX: 100 (200px in image coords), clientY: 100 (200px in image coords)
+    fireEvent.pointerDown(overlayEl, { clientX: 100, clientY: 100, pointerId: 1 });
+
+    // Pointer move to clientX: 200 (400px in image coords), clientY: 100 (200px in image coords)
+    fireEvent.pointerMove(overlayEl, { clientX: 200, clientY: 100, pointerId: 1 });
+
+    // Pointer up at clientX: 200, clientY: 100
+    fireEvent.pointerUp(overlayEl, { clientX: 200, clientY: 100, pointerId: 1 });
+
+    expect(onAddRegion).toHaveBeenCalledTimes(1);
+    const [bbox, category, extra] = onAddRegion.mock.calls[0];
+
+    expect(category).toBe('bubble-oval');
+    expect(extra).toBeDefined();
+    expect(extra.isBrush).toBe(true);
+    expect(extra.brushMask).toBeInstanceOf(Uint8Array);
+    expect(extra.brushMask.length).toBe(bbox.width * bbox.height);
+  });
+
+  it('renders uncleaned brush regions with Brush tag label', () => {
+    const brushRegion = {
+      id: 'brush-r1',
+      bbox: { x: 100, y: 100, width: 200, height: 100 },
+      text: '',
+      confidence: 100,
+      isCleaned: false,
+      isManual: true,
+      isBrush: true,
+    };
+
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[brushRegion]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    expect(container.textContent).toContain('Brush');
+  });
+
   it('hides overlay boxes for cleaned regions while displaying uncleaned regions', () => {
     const uncleanedRegion = {
       id: 'r1',
