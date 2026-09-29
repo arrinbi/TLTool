@@ -325,4 +325,61 @@ describe('RegionOverlay manual selection coordinate mapping', () => {
 
     expect(onAddRegion).toHaveBeenCalledTimes(2);
   });
+
+  it('hides overlay boxes for cleaned regions while displaying uncleaned regions', () => {
+    const uncleanedRegion = {
+      id: 'r1',
+      bbox: { x: 100, y: 100, width: 200, height: 100 },
+      text: 'Uncleaned Text',
+      confidence: 90,
+      isCleaned: false,
+    };
+    const cleanedRegion = {
+      id: 'r2',
+      bbox: { x: 400, y: 100, width: 200, height: 100 },
+      text: 'Cleaned Text',
+      confidence: 90,
+      isCleaned: true,
+    };
+
+    const { container, rerender } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[uncleanedRegion, cleanedRegion]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    // Only uncleanedRegion (1 box) should be rendered
+    const boxes = container.querySelectorAll('.border-2');
+    expect(boxes.length).toBe(1);
+
+    // When cleanedRegion is reverted (isCleaned set to false), it becomes visible
+    rerender(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[uncleanedRegion, { ...cleanedRegion, isCleaned: false }]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    const updatedBoxes = container.querySelectorAll('.border-2');
+    expect(updatedBoxes.length).toBe(2);
+  });
 });
