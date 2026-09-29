@@ -204,7 +204,12 @@ export function App() {
     (
       bbox: BoundingBox,
       category?: RegionCategory,
-      extra?: { brushMask?: Uint8Array; isBrush?: boolean }
+      extra?: {
+        brushMask?: Uint8Array;
+        isBrush?: boolean;
+        brushPoints?: Array<{ x: number; y: number }>;
+        brushSize?: number;
+      }
     ) => {
       if (!selectedPageId) return;
       const newRegion: TextRegion = {
@@ -217,6 +222,8 @@ export function App() {
         category: category || 'bubble-oval',
         brushMask: extra?.brushMask,
         isBrush: extra?.isBrush,
+        brushPoints: extra?.brushPoints,
+        brushSize: extra?.brushSize,
       };
 
       setPages((prev) =>
@@ -259,6 +266,8 @@ export function App() {
       category: targetRegion.category,
       brushMask: targetRegion.brushMask,
       isBrush: targetRegion.isBrush,
+      brushPoints: targetRegion.brushPoints,
+      brushSize: targetRegion.brushSize,
     };
 
     const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, effectiveOptions);
