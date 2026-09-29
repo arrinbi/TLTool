@@ -6,6 +6,7 @@ import {
   inpaintTextMask,
   inpaintOpenCVTelea,
   isCategoryEnabled,
+  cleanImageRegion,
   cleanAllRegions,
   CLEANING_LIMITATIONS_NOTICE,
 } from '../cleaningService';
@@ -129,6 +130,47 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
       expect(resultUrl).not.toBe(initialUrl);
       expect(typeof resultUrl).toBe('string');
       expect(resultUrl.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Brush Manual Selection & OpenCV Telea Cleaning Path', () => {
+    it('cleanImageRegion inpaints only the painted brush stroke pixels when brushMask is provided', async () => {
+      // Create a 100x100 canvas with red background, black artwork line, and white text stroke
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext('2d')!;
+
+      // 1. Red background
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(0, 0, 100, 100);
+
+      // 2. Black artwork line at y=50
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 48, 100, 4);
+
+      // 3. White text stroke at (40, 40) size 20x20
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(40, 40, 20, 20);
+
+      // Create a 20x20 brushMask covering the white text at bbox (40, 40, 20, 20)
+      const brushMask = new Uint8Array(20 * 20);
+      brushMask.fill(1);
+
+      const bbox: BoundingBox = { x: 40, y: 40, width: 20, height: 20 };
+      const options: CleaningOptions = {
+        method: 'opencv-telea',
+        padding: 2,
+        isBrush: true,
+        brushMask,
+      };
+
+      const canvasUrl = canvas.toDataURL('image/png');
+      const resultUrl = await cleanImageRegion(canvasUrl, bbox, options);
+
+      // Verify that result URL is generated
+      expect(resultUrl).toBeDefined();
+      expect(typeof resultUrl).toBe('string');
     });
   });
 

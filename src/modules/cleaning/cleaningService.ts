@@ -728,11 +728,37 @@ export async function cleanImageRegion(
   }
 
   const patchImageData = ctx.getImageData(targetX, targetY, targetW, targetH);
-  const textMaskResult = generateTextMask(
-    patchImageData,
-    options.isManualRegion ?? false,
-    options.category
-  );
+
+  let targetMask: Uint8Array;
+  let isUniformBg = false;
+  let avgBgColor = { r: 255, g: 255, b: 255 };
+
+  if (options.brushMask && options.brushMask.length === bbox.width * bbox.height) {
+    targetMask = new Uint8Array(targetW * targetH);
+    const offsetX = bbox.x - targetX;
+    const offsetY = bbox.y - targetY;
+
+    for (let by = 0; by < bbox.height; by++) {
+      for (let bx = 0; bx < bbox.width; bx++) {
+        if (options.brushMask[by * bbox.width + bx]) {
+          const px = offsetX + bx;
+          const py = offsetY + by;
+          if (px >= 0 && px < targetW && py >= 0 && py < targetH) {
+            targetMask[py * targetW + px] = 1;
+          }
+        }
+      }
+    }
+  } else {
+    const textMaskResult = generateTextMask(
+      patchImageData,
+      options.isManualRegion ?? false,
+      options.category
+    );
+    targetMask = textMaskResult.mask;
+    isUniformBg = textMaskResult.isUniformBackground;
+    avgBgColor = textMaskResult.avgBgColor;
+  }
 
   let hexColor = options.fillColor;
   if (!hexColor) {
@@ -751,18 +777,18 @@ export async function cleanImageRegion(
 
   const chosenColor = parseHex(hexColor);
 
-  if (options.category === 'text-outside' || options.method === 'opencv-telea') {
-    await inpaintOpenCVTelea(patchImageData, textMaskResult.mask);
+  if (options.isBrush || options.brushMask || options.category === 'text-outside' || options.method === 'opencv-telea') {
+    await inpaintOpenCVTelea(patchImageData, targetMask);
   } else if (options.method === 'solid-white') {
-    cleanBubbleText(patchImageData, textMaskResult.mask, chosenColor);
+    cleanBubbleText(patchImageData, targetMask, chosenColor);
   } else if (options.method === 'border-sample') {
-    cleanBubbleText(patchImageData, textMaskResult.mask, textMaskResult.avgBgColor);
+    cleanBubbleText(patchImageData, targetMask, avgBgColor);
   } else {
     // smart-fill method
-    if (textMaskResult.isUniformBackground) {
-      cleanBubbleText(patchImageData, textMaskResult.mask, textMaskResult.avgBgColor);
+    if (isUniformBg) {
+      cleanBubbleText(patchImageData, targetMask, avgBgColor);
     } else {
-      await inpaintOpenCVTelea(patchImageData, textMaskResult.mask);
+      await inpaintOpenCVTelea(patchImageData, targetMask);
     }
   }
 
@@ -822,6 +848,8 @@ export async function cleanAllRegions(
         ...options,
         isManualRegion: options.isManualRegion ?? region.isManual ?? false,
         category: region.category,
+        brushMask: region.brushMask,
+        isBrush: region.isBrush,
       };
       activeUrl = await cleanImageRegion(activeUrl, region.bbox, effectiveOptions);
     }

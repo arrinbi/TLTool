@@ -9,6 +9,8 @@ export type CleaningMethod = 'smart-fill' | 'solid-white' | 'border-sample' | 'b
 
 export type RegionCategory = 'bubble-oval' | 'bubble-rect' | 'text-outside' | 'sfx';
 
+export type ManualTool = 'rectangle' | 'brush';
+
 export interface TextRegion {
   id: string;
   bbox: BoundingBox;
@@ -19,6 +21,8 @@ export interface TextRegion {
   category?: RegionCategory;
   cleaningMethod?: CleaningMethod;
   originalText?: string;
+  brushMask?: Uint8Array;
+  isBrush?: boolean;
   // Future module placeholders:
   translation?: string;
   typesetting?: {
@@ -66,6 +70,8 @@ export interface CleaningOptions {
   categories?: CategoryCleaningFlags;
   isManualRegion?: boolean;
   category?: RegionCategory;
+  brushMask?: Uint8Array;
+  isBrush?: boolean;
 }
 
 export type WorkspaceViewMode = 'cleaned' | 'original' | 'side-by-side' | 'split-slider';

@@ -6,6 +6,7 @@ import type {
   WorkflowStage,
   BoundingBox,
   RegionCategory,
+  ManualTool,
 } from './types';
 import { HeaderToolbar } from './components/HeaderToolbar';
 import { PageManager } from './components/PageManager';
@@ -21,6 +22,8 @@ export function App() {
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<WorkflowStage>('ocr-cleaning');
   const [detectionMode, setDetectionMode] = useState<'auto' | 'manual'>('auto');
+  const [manualTool, setManualTool] = useState<ManualTool>('rectangle');
+  const [brushSize, setBrushSize] = useState<number>(15);
   const [manualCategory, setManualCategory] = useState<RegionCategory>('bubble-oval');
   const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
 
@@ -197,26 +200,35 @@ export function App() {
     );
   }, [selectedPageId]);
 
-  const handleAddRegion = useCallback((bbox: BoundingBox, category?: RegionCategory) => {
-    if (!selectedPageId) return;
-    const newRegion: TextRegion = {
-      id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      bbox,
-      text: '',
-      confidence: 100,
-      isCleaned: false,
-      isManual: true,
-      category: category || 'bubble-oval',
-    };
+  const handleAddRegion = useCallback(
+    (
+      bbox: BoundingBox,
+      category?: RegionCategory,
+      extra?: { brushMask?: Uint8Array; isBrush?: boolean }
+    ) => {
+      if (!selectedPageId) return;
+      const newRegion: TextRegion = {
+        id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        bbox,
+        text: '',
+        confidence: 100,
+        isCleaned: false,
+        isManual: true,
+        category: category || 'bubble-oval',
+        brushMask: extra?.brushMask,
+        isBrush: extra?.isBrush,
+      };
 
-    setPages((prev) =>
-      prev.map((p) => {
-        if (p.id !== selectedPageId) return p;
-        return { ...p, regions: [...p.regions, newRegion] };
-      })
-    );
-    setSelectedRegionId(newRegion.id);
-  }, [selectedPageId]);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPageId) return p;
+          return { ...p, regions: [...p.regions, newRegion] };
+        })
+      );
+      setSelectedRegionId(newRegion.id);
+    },
+    [selectedPageId]
+  );
 
   const handleDeleteRegion = useCallback((regionId: string) => {
     if (!selectedPageId) return;
@@ -245,6 +257,8 @@ export function App() {
       ...options,
       isManualRegion: options.isManualRegion ?? targetRegion.isManual,
       category: targetRegion.category,
+      brushMask: targetRegion.brushMask,
+      isBrush: targetRegion.isBrush,
     };
 
     const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, effectiveOptions);
@@ -416,6 +430,10 @@ export function App() {
           onDeleteRegion={handleDeleteRegion}
           detectionMode={detectionMode}
           onSelectDetectionMode={handleSelectDetectionMode}
+          manualTool={manualTool}
+          onSelectManualTool={setManualTool}
+          brushSize={brushSize}
+          onSelectBrushSize={setBrushSize}
           manualCategory={manualCategory}
           onSelectManualCategory={setManualCategory}
           isDrawingMode={isDrawingMode}
@@ -434,6 +452,10 @@ export function App() {
           onDeleteRegion={handleDeleteRegion}
           detectionMode={detectionMode}
           onSelectDetectionMode={handleSelectDetectionMode}
+          manualTool={manualTool}
+          onSelectManualTool={setManualTool}
+          brushSize={brushSize}
+          onSelectBrushSize={setBrushSize}
           manualCategory={manualCategory}
           onSelectManualCategory={setManualCategory}
           onRunOcr={() =>

@@ -8,8 +8,10 @@ import {
   Wand2,
   X,
   Plus,
+  Square,
+  Paintbrush,
 } from 'lucide-react';
-import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory } from '../types';
+import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
 
 interface RegionInspectorProps {
@@ -20,6 +22,10 @@ interface RegionInspectorProps {
   onDeleteRegion: (id: string) => void;
   detectionMode: 'auto' | 'manual';
   onSelectDetectionMode: (mode: 'auto' | 'manual') => void;
+  manualTool?: ManualTool;
+  onSelectManualTool?: (tool: ManualTool) => void;
+  brushSize?: number;
+  onSelectBrushSize?: (size: number) => void;
   manualCategory: RegionCategory;
   onSelectManualCategory: (category: RegionCategory) => void;
   onRunOcr: () => void;
@@ -36,6 +42,10 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onDeleteRegion,
   detectionMode,
   onSelectDetectionMode,
+  manualTool = 'rectangle',
+  onSelectManualTool,
+  brushSize = 15,
+  onSelectBrushSize,
   manualCategory,
   onSelectManualCategory,
   onRunOcr,
@@ -114,20 +124,69 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
             </button>
           </div>
 
-          {/* Category selection for Manual Selection */}
+          {/* Settings for Manual Selection */}
           {detectionMode === 'manual' && (
-            <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-slate-800/80">
-              <label className="text-xs text-slate-300 font-medium">Default Manual Category</label>
-              <select
-                value={manualCategory}
-                onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
-                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="bubble-oval">Bubble Oval/Round</option>
-                <option value="bubble-rect">Bubble Square/Box</option>
-                <option value="text-outside">Floating Text (Outside Bubble)</option>
-                <option value="sfx">SFX (Sound Effects)</option>
-              </select>
+            <div className="flex flex-col gap-2 mt-1 pt-2 border-t border-slate-800/80">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-slate-300 font-medium">Manual Selection Tool</label>
+                <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => onSelectManualTool?.('rectangle')}
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                      manualTool === 'rectangle'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    <span>Rectangle</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSelectManualTool?.('brush')}
+                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                      manualTool === 'brush'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Paintbrush className="w-3.5 h-3.5" />
+                    <span>Brush</span>
+                  </button>
+                </div>
+              </div>
+
+              {manualTool === 'brush' && (
+                <div className="flex flex-col gap-1 mt-1">
+                  <div className="flex justify-between text-xs text-slate-300 font-medium">
+                    <span>Brush Size</span>
+                    <span className="text-slate-400">{brushSize} px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="5"
+                    max="50"
+                    value={brushSize}
+                    onChange={(e) => onSelectBrushSize?.(Number(e.target.value))}
+                    className="accent-indigo-500 cursor-pointer"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1 mt-1">
+                <label className="text-xs text-slate-300 font-medium">Default Manual Category</label>
+                <select
+                  value={manualCategory}
+                  onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
+                  className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="bubble-oval">Bubble Oval/Round</option>
+                  <option value="bubble-rect">Bubble Square/Box</option>
+                  <option value="text-outside">Floating Text (Outside Bubble)</option>
+                  <option value="sfx">SFX (Sound Effects)</option>
+                </select>
+              </div>
             </div>
           )}
         </div>
