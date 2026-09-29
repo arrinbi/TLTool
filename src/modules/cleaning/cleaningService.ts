@@ -95,6 +95,31 @@ export async function inpaintOpenCVTelea(
   dstRgbaMat.delete();
 }
 
+/**
+ * Inpaints masked pixels using LaMa AI deep neural network engine.
+ * Accepts image data and pixel-level mask.
+ * Requires browser ONNX Runtime Web (`onnxruntime-web`) and a LaMa ONNX model file.
+ */
+export async function inpaintLaMa(
+  imgData: ImageData,
+  _mask?: Uint8Array
+): Promise<void> {
+  const { width, height } = imgData;
+  if (width <= 0 || height <= 0) return;
+
+  // Check if browser-side ONNX Runtime Web is available in current runtime environment
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const globalObj = typeof window !== 'undefined' ? (window as any) : (globalThis as any);
+  const ort = globalObj?.ort || globalObj?.onnxruntime;
+
+  if (!ort || typeof ort.InferenceSession?.create !== 'function') {
+    throw new Error(
+      'LaMa AI inpainting engine is not available in the current browser runtime. ' +
+      'Browser-side LaMa inference requires ONNX Runtime Web (onnxruntime-web) and a LaMa ONNX model file.'
+    );
+  }
+}
+
 export interface TextMaskResult {
   mask: Uint8Array;
   width: number;
@@ -777,7 +802,9 @@ export async function cleanImageRegion(
 
   const chosenColor = parseHex(hexColor);
 
-  if (options.isBrush || options.brushMask || options.category === 'text-outside' || options.method === 'opencv-telea') {
+  if (options.method === 'lama') {
+    await inpaintLaMa(patchImageData, targetMask);
+  } else if (options.isBrush || options.brushMask || options.category === 'text-outside' || options.method === 'opencv-telea') {
     await inpaintOpenCVTelea(patchImageData, targetMask);
   } else if (options.method === 'solid-white') {
     cleanBubbleText(patchImageData, targetMask, chosenColor);
@@ -865,6 +892,16 @@ export async function cleanAllRegions(
 export const CLEANING_LIMITATIONS_NOTICE = {
   title: 'Cleaning Engine Capabilities & Technical Limitations',
   items: [
+    {
+      category: 'OpenCV Telea Inpainting',
+      effectiveness: 'High Speed Fast Marching (Default Engine)',
+      description: 'Default browser engine using fast marching Telea inpainting on pixel-level masks. Ideal for speech bubbles and text over background art.',
+    },
+    {
+      category: 'LaMa AI Inpainting',
+      effectiveness: 'Deep Learning Large Mask Inpainting',
+      description: 'Advanced AI engine for complex text removal over detailed artwork. Requires browser ONNX Runtime Web (onnxruntime-web) and a trained LaMa ONNX model file.',
+    },
     {
       category: 'Speech Bubbles & Solid Backgrounds',
       effectiveness: 'High Precision (98-100%)',

@@ -270,25 +270,34 @@ export function App() {
       brushSize: targetRegion.brushSize,
     };
 
-    const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, effectiveOptions);
-    const updatedRegions = selectedPage.regions.map((r) =>
-      r.id === regionId ? { ...r, isCleaned: true, cleaningMethod: options.method } : r
-    );
+    try {
+      const newCleanedUrl = await cleanImageRegion(selectedPage.cleanedUrl, targetRegion.bbox, effectiveOptions);
+      const updatedRegions = selectedPage.regions.map((r) =>
+        r.id === regionId ? { ...r, isCleaned: true, cleaningMethod: options.method } : r
+      );
 
-    setPages((prev) =>
-      prev.map((p) => {
-        if (p.id !== selectedPage.id) return p;
-        const updatedPage = pushPageHistory(
-          { ...p, isProcessing: false },
-          newCleanedUrl,
-          updatedRegions,
-          `Clean region ${regionId}`
-        );
-        return updatedPage;
-      })
-    );
-    if (selectedRegionId === regionId) {
-      setSelectedRegionId(null);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPage.id) return p;
+          const updatedPage = pushPageHistory(
+            { ...p, isProcessing: false },
+            newCleanedUrl,
+            updatedRegions,
+            `Clean region ${regionId}`
+          );
+          return updatedPage;
+        })
+      );
+      if (selectedRegionId === regionId) {
+        setSelectedRegionId(null);
+      }
+    } catch (err) {
+      console.error('Cleaning failed:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(`Cleaning Error: ${errorMsg}`);
+      setPages((prev) =>
+        prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false } : p))
+      );
     }
   }, [selectedPage, selectedRegionId]);
 
@@ -300,26 +309,35 @@ export function App() {
       prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true } : p))
     );
 
-    const newCleanedUrl = await cleanAllRegions(selectedPage.cleanedUrl, selectedPage.regions, options);
-    const updatedRegions = selectedPage.regions.map((r) => ({
-      ...r,
-      isCleaned: true,
-      cleaningMethod: options.method,
-    }));
+    try {
+      const newCleanedUrl = await cleanAllRegions(selectedPage.cleanedUrl, selectedPage.regions, options);
+      const updatedRegions = selectedPage.regions.map((r) => ({
+        ...r,
+        isCleaned: true,
+        cleaningMethod: options.method,
+      }));
 
-    setPages((prev) =>
-      prev.map((p) => {
-        if (p.id !== selectedPage.id) return p;
-        const updatedPage = pushPageHistory(
-          { ...p, isProcessing: false },
-          newCleanedUrl,
-          updatedRegions,
-          'Clean all regions'
-        );
-        return updatedPage;
-      })
-    );
-    setSelectedRegionId(null);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPage.id) return p;
+          const updatedPage = pushPageHistory(
+            { ...p, isProcessing: false },
+            newCleanedUrl,
+            updatedRegions,
+            'Clean all regions'
+          );
+          return updatedPage;
+        })
+      );
+      setSelectedRegionId(null);
+    } catch (err) {
+      console.error('Bulk cleaning failed:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(`Cleaning Error: ${errorMsg}`);
+      setPages((prev) =>
+        prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false } : p))
+      );
+    }
   }, [selectedPage]);
 
   // Undo / Redo
