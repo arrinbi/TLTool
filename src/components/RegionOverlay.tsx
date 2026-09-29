@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import type { TextRegion, BoundingBox, RegionCategory, ManualTool } from '../types';
+import { createBrushMask } from '../utils/brushUtils';
 
 interface RegionOverlayProps {
   imageWidth: number;
@@ -13,7 +14,12 @@ interface RegionOverlayProps {
   onAddRegion: (
     bbox: BoundingBox,
     category?: RegionCategory,
-    extra?: { brushMask?: Uint8Array; isBrush?: boolean }
+    extra?: {
+      brushMask?: Uint8Array;
+      isBrush?: boolean;
+      brushPoints?: Array<{ x: number; y: number }>;
+      brushSize?: number;
+    }
   ) => void;
   onDeleteRegion: (id: string) => void;
   isDrawingMode: boolean;
@@ -110,88 +116,22 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         const points = [...brushPoints, currentPos];
 
         if (points.length > 0) {
-          const radius = Math.max(1, Math.round(brushSize / 2));
-          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-          for (const p of points) {
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.y > maxY) maxY = p.y;
+          const { bbox, mask } = createBrushMask(points, brushSize, imageWidth, imageHeight);
+
+          let hasMaskPixels = false;
+          for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) {
+              hasMaskPixels = true;
+              break;
+            }
           }
 
-          const pad = radius;
-          const bboxX = Math.max(0, minX - pad);
-          const bboxY = Math.max(0, minY - pad);
-          const bboxMaxX = Math.min(imageWidth, maxX + pad);
-          const bboxMaxY = Math.min(imageHeight, maxY + pad);
-          const width = Math.max(1, bboxMaxX - bboxX);
-          const height = Math.max(1, bboxMaxY - bboxY);
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-
-          if (ctx) {
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, width, height);
-            ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = radius * 2;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            if (typeof ctx.moveTo === 'function' && typeof ctx.lineTo === 'function' && points.length > 1) {
-              ctx.beginPath();
-              ctx.moveTo(points[0].x - bboxX, points[0].y - bboxY);
-              for (let i = 1; i < points.length; i++) {
-                ctx.lineTo(points[i].x - bboxX, points[i].y - bboxY);
-              }
-              ctx.stroke();
-            } else {
-              // Interpolated fillRect fallback for environments where path methods are not mocked
-              for (let i = 0; i < points.length; i++) {
-                const px = points[i].x - bboxX;
-                const py = points[i].y - bboxY;
-                if (typeof ctx.arc === 'function') {
-                  ctx.beginPath();
-                  ctx.arc(px, py, radius, 0, Math.PI * 2);
-                  ctx.fill();
-                } else {
-                  ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
-                }
-
-                if (i > 0) {
-                  const p1 = points[i - 1];
-                  const p2 = points[i];
-                  const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                  const steps = Math.max(1, Math.ceil(dist / Math.max(1, radius / 2)));
-                  for (let s = 1; s <= steps; s++) {
-                    const ix = p1.x + (p2.x - p1.x) * (s / steps) - bboxX;
-                    const iy = p1.y + (p2.y - p1.y) * (s / steps) - bboxY;
-                    ctx.fillRect(ix - radius, iy - radius, radius * 2, radius * 2);
-                  }
-                }
-              }
-            }
-
-            const imgData = ctx.getImageData(0, 0, width, height);
-            const mask = new Uint8Array(width * height);
-            let hasMaskPixels = false;
-            for (let i = 0; i < width * height; i++) {
-              if (imgData.data[i * 4] > 128) {
-                mask[i] = 1;
-                hasMaskPixels = true;
-              }
-            }
-
-            if (hasMaskPixels) {
-              onAddRegion(
-                { x: bboxX, y: bboxY, width, height },
-                manualCategory,
-                { brushMask: mask, isBrush: true }
-              );
-            }
+          if (hasMaskPixels) {
+            onAddRegion(
+              bbox,
+              manualCategory,
+              { brushMask: mask, isBrush: true, brushPoints: points, brushSize }
+            );
           }
         }
       } else {
@@ -232,6 +172,10 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     setBrushPoints([]);
   };
 
+  const uncleanedRegions = regions.filter((region) => !region.isCleaned);
+  const brushRegions = uncleanedRegions.filter((r) => r.isBrush || r.brushMask);
+  const rectRegions = uncleanedRegions.filter((r) => !r.isBrush && !r.brushMask);
+
   return (
     <div
       ref={containerRef}
@@ -244,8 +188,8 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
       onPointerCancel={handlePointerCancel}
       style={{ width: displayWidth, height: displayHeight, touchAction: isDrawingMode ? 'none' : 'auto' }}
     >
-      {/* Existing Regions */}
-      {regions.filter((region) => !region.isCleaned).map((region) => {
+      {/* Rectangle Mode Regions */}
+      {rectRegions.map((region) => {
         const isSelected = region.id === selectedRegionId;
         const left = region.bbox.x * scaleX;
         const top = region.bbox.y * scaleY;
@@ -275,14 +219,109 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
             {/* Tag / Status label */}
             <div
               className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white shadow-sm flex items-center gap-1 ${
-                isSelected ? 'bg-indigo-600' : region.isBrush ? 'bg-purple-600' : 'bg-amber-600'
+                isSelected ? 'bg-indigo-600' : 'bg-amber-600'
               }`}
             >
-              <span>{region.isBrush ? 'Brush' : 'Text'}</span>
+              <span>Text</span>
             </div>
           </div>
         );
       })}
+
+      {/* SVG Overlay for Brush Mask Regions */}
+      {brushRegions.length > 0 && (
+        <svg
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{ width: displayWidth, height: displayHeight }}
+        >
+          {brushRegions.map((region) => {
+            const isSelected = region.id === selectedRegionId;
+            const left = region.bbox.x * scaleX;
+            const top = region.bbox.y * scaleY;
+            const width = region.bbox.width * scaleX;
+            const height = region.bbox.height * scaleY;
+            const size = region.brushSize || brushSize;
+            const strokeW = Math.max(2, size * scaleX);
+
+            let svgContent = null;
+            if (region.brushPoints && region.brushPoints.length > 0) {
+              const pts = region.brushPoints;
+              if (pts.length === 1) {
+                const cx = pts[0].x * scaleX;
+                const cy = pts[0].y * scaleY;
+                const r = Math.max(1, (size / 2) * scaleX);
+                svgContent = (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={r}
+                    fill={isSelected ? 'rgba(129, 140, 248, 0.6)' : 'rgba(168, 85, 247, 0.5)'}
+                    stroke={isSelected ? '#818cf8' : '#a855f7'}
+                    strokeWidth={2}
+                  />
+                );
+              } else {
+                const d =
+                  `M ${pts[0].x * scaleX} ${pts[0].y * scaleY} ` +
+                  pts
+                    .slice(1)
+                    .map((p) => `L ${p.x * scaleX} ${p.y * scaleY}`)
+                    .join(' ');
+
+                svgContent = (
+                  <path
+                    d={d}
+                    stroke={isSelected ? 'rgba(129, 140, 248, 0.7)' : 'rgba(168, 85, 247, 0.55)'}
+                    strokeWidth={strokeW}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                );
+              }
+            } else {
+              svgContent = (
+                <rect
+                  x={left}
+                  y={top}
+                  width={width}
+                  height={height}
+                  fill={isSelected ? 'rgba(129, 140, 248, 0.4)' : 'rgba(168, 85, 247, 0.35)'}
+                  rx={4}
+                />
+              );
+            }
+
+            return (
+              <g
+                key={region.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectRegion(region.id);
+                }}
+                className="cursor-pointer pointer-events-auto group"
+              >
+                {svgContent}
+                <foreignObject
+                  x={left}
+                  y={Math.max(0, top - 24)}
+                  width={60}
+                  height={24}
+                  className="overflow-visible pointer-events-auto"
+                >
+                  <div
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium text-white shadow-sm inline-flex items-center gap-1 ${
+                      isSelected ? 'bg-indigo-600' : 'bg-purple-600'
+                    }`}
+                  >
+                    <span>Brush</span>
+                  </div>
+                </foreignObject>
+              </g>
+            );
+          })}
+        </svg>
+      )}
 
       {/* Currently Drawing Box Preview (Rectangle) */}
       {isDrawing && manualTool === 'rectangle' && drawStart && drawCurrent && (

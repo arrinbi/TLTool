@@ -23,6 +23,8 @@ export interface TextRegion {
   originalText?: string;
   brushMask?: Uint8Array;
   isBrush?: boolean;
+  brushPoints?: Array<{ x: number; y: number }>;
+  brushSize?: number;
   // Future module placeholders:
   translation?: string;
   typesetting?: {
@@ -72,6 +74,8 @@ export interface CleaningOptions {
   category?: RegionCategory;
   brushMask?: Uint8Array;
   isBrush?: boolean;
+  brushPoints?: Array<{ x: number; y: number }>;
+  brushSize?: number;
 }
 
 export type WorkspaceViewMode = 'cleaned' | 'original' | 'side-by-side' | 'split-slider';

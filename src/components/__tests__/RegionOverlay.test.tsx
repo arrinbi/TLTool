@@ -380,6 +380,64 @@ describe('RegionOverlay manual selection coordinate mapping', () => {
     expect(extra.brushMask.length).toBe(bbox.width * bbox.height);
   });
 
+  it('4. Multiple brush strokes are preserved', () => {
+    const onAddRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={2000}
+        displayWidth={500}
+        displayHeight={1000}
+        regions={[]}
+        selectedRegionId={null}
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={onAddRegion}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={true}
+        manualTool="brush"
+        brushSize={20}
+        manualCategory="bubble-oval"
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+
+    vi.spyOn(overlayEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 500,
+      height: 1000,
+      right: 500,
+      bottom: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Stroke 1: (100, 100) -> (150, 100) in display coords (200, 200 -> 300, 200 in image coords)
+    fireEvent.pointerDown(overlayEl, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(overlayEl, { clientX: 150, clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(overlayEl, { clientX: 150, clientY: 100, pointerId: 1 });
+
+    expect(onAddRegion).toHaveBeenCalledTimes(1);
+
+    // Stroke 2: (250, 300) -> (300, 300) in display coords
+    fireEvent.pointerDown(overlayEl, { clientX: 250, clientY: 300, pointerId: 2 });
+    fireEvent.pointerMove(overlayEl, { clientX: 300, clientY: 300, pointerId: 2 });
+    fireEvent.pointerUp(overlayEl, { clientX: 300, clientY: 300, pointerId: 2 });
+
+    expect(onAddRegion).toHaveBeenCalledTimes(2);
+
+    const stroke1Extra = onAddRegion.mock.calls[0][2];
+    const stroke2Extra = onAddRegion.mock.calls[1][2];
+
+    expect(stroke1Extra.isBrush).toBe(true);
+    expect(stroke2Extra.isBrush).toBe(true);
+    expect(stroke1Extra.brushMask).toBeInstanceOf(Uint8Array);
+    expect(stroke2Extra.brushMask).toBeInstanceOf(Uint8Array);
+  });
+
   it('renders uncleaned brush regions with Brush tag label', () => {
     const brushRegion = {
       id: 'brush-r1',

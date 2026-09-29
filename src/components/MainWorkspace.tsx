@@ -11,7 +11,12 @@ interface MainWorkspaceProps {
   onAddRegion: (
     bbox: BoundingBox,
     category?: RegionCategory,
-    extra?: { brushMask?: Uint8Array; isBrush?: boolean }
+    extra?: {
+      brushMask?: Uint8Array;
+      isBrush?: boolean;
+      brushPoints?: Array<{ x: number; y: number }>;
+      brushSize?: number;
+    }
   ) => void;
   onDeleteRegion: (id: string) => void;
   detectionMode: 'auto' | 'manual';

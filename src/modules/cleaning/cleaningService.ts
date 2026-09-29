@@ -850,6 +850,8 @@ export async function cleanAllRegions(
         category: region.category,
         brushMask: region.brushMask,
         isBrush: region.isBrush,
+        brushPoints: region.brushPoints,
+        brushSize: region.brushSize,
       };
       activeUrl = await cleanImageRegion(activeUrl, region.bbox, effectiveOptions);
     }
