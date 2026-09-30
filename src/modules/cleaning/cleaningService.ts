@@ -1,5 +1,7 @@
 import * as cvModule from '@techstark/opencv-js';
 import type { BoundingBox, CleaningOptions, TextRegion, RegionCategory, CategoryCleaningFlags } from '../../types';
+import { inpaintMIGAN } from './miganInpainting';
+export { inpaintMIGAN, resetMIGANSession } from './miganInpainting';
 
 // Cached OpenCV runtime instance
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -804,6 +806,8 @@ export async function cleanImageRegion(
 
   if (options.method === 'lama') {
     await inpaintLaMa(patchImageData, targetMask);
+  } else if (options.method === 'migan') {
+    await inpaintMIGAN(patchImageData, targetMask);
   } else if (options.isBrush || options.brushMask || options.category === 'text-outside' || options.method === 'opencv-telea') {
     await inpaintOpenCVTelea(patchImageData, targetMask);
   } else if (options.method === 'solid-white') {
@@ -901,6 +905,11 @@ export const CLEANING_LIMITATIONS_NOTICE = {
       category: 'LaMa AI Inpainting',
       effectiveness: 'Deep Learning Large Mask Inpainting',
       description: 'Advanced AI engine for complex text removal over detailed artwork. Requires browser ONNX Runtime Web (onnxruntime-web) and a trained LaMa ONNX model file.',
+    },
+    {
+      category: 'MI-GAN AI Inpainting',
+      effectiveness: 'Deep Learning Modulation Inpainting (MI-GAN)',
+      description: 'Generative AI model optimized for high-quality text inpainting and background restoration. Requires browser ONNX Runtime Web (onnxruntime-web) and a MI-GAN ONNX model file.',
     },
     {
       category: 'Speech Bubbles & Solid Backgrounds',
