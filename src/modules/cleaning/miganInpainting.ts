@@ -12,6 +12,21 @@ export interface MIGANSessionOptions {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let miganSession: any = null;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getOrtModule(): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const globalObj = typeof window !== 'undefined' ? (window as any) : (globalThis as any);
+  if (globalObj?.ort || globalObj?.onnxruntime) {
+    return globalObj.ort || globalObj.onnxruntime;
+  }
+  try {
+    const ortModule = await import('onnxruntime-web');
+    return ortModule.default || ortModule;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get or initialize the MI-GAN ONNX Inference Session.
  */
@@ -20,15 +35,13 @@ let miganSession: any = null;
 export async function getMIGANSession(options?: MIGANSessionOptions): Promise<any> {
   if (miganSession) return miganSession;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalObj = typeof window !== 'undefined' ? (window as any) : (globalThis as any);
-  const ort = globalObj?.ort || globalObj?.onnxruntime;
+  const ort = await getOrtModule();
 
   if (!ort || typeof ort.InferenceSession?.create !== 'function') {
     return null;
   }
 
-  const modelPath = options?.modelPath || '/models/migan.onnx';
+  const modelPath = options?.modelPath || '/models/migan_pipeline_v2.onnx';
   try {
     miganSession = await ort.InferenceSession.create(modelPath, {
       executionProviders: options?.executionProviders || ['wasm', 'webgl'],
@@ -63,7 +76,7 @@ export async function inpaintMIGAN(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const globalObj = typeof window !== 'undefined' ? (window as any) : (globalThis as any);
-  const ort = globalObj?.ort || globalObj?.onnxruntime;
+  const ort = (await getOrtModule()) || globalObj?.ort || globalObj?.onnxruntime;
 
   const session = sessionOverride || globalObj?.__miganSession || (await getMIGANSession());
 
