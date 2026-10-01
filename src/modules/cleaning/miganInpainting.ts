@@ -41,7 +41,9 @@ export async function getMIGANSession(options?: MIGANSessionOptions): Promise<an
     return null;
   }
 
-  const modelPath = options?.modelPath || '/models/migan_pipeline_v2.onnx';
+  const baseUrl = import.meta.env?.BASE_URL || '/';
+  const defaultModelPath = `${baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'}models/migan_pipeline_v2.onnx`;
+  const modelPath = options?.modelPath || defaultModelPath;
   try {
     miganSession = await ort.InferenceSession.create(modelPath, {
       executionProviders: options?.executionProviders || ['wasm', 'webgl'],
