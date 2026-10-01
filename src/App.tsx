@@ -315,6 +315,8 @@ export function App() {
       );
     } catch (err) {
       console.error('Failed to translate region:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(`Translation Error: ${errorMsg}`);
       setPages((prev) =>
         prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
       );
@@ -338,6 +340,8 @@ export function App() {
       );
     } catch (err) {
       console.error('Failed to translate all regions:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(`Translation Error: ${errorMsg}`);
       setPages((prev) =>
         prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
       );

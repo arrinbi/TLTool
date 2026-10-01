@@ -46,12 +46,38 @@ export async function translateText(
     return INDONESIAN_DICTIONARY[upperKey];
   }
 
-  // Default translation mock/formatting if not in dictionary
-  if (options.targetLang === 'id') {
-    return `[ID]: ${trimmed}`;
+  const source = options.sourceLang || 'autodetect';
+  const target = options.targetLang || 'id';
+  const langpair = `${source}|${target}`;
+
+  const apiUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed)}&langpair=${encodeURIComponent(langpair)}`;
+
+  let response: Response;
+  try {
+    response = await fetch(apiUrl);
+  } catch (netErr) {
+    throw new Error(`Translation API request failed: ${(netErr as Error).message || String(netErr)}`);
   }
 
-  return `[${options.targetLang.toUpperCase()}]: ${trimmed}`;
+  if (!response.ok) {
+    throw new Error(`Translation API HTTP error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  if (data?.responseStatus !== 200 && data?.responseStatus !== '200') {
+    const detail = data?.responseDetails || 'Unknown error from translation provider';
+    throw new Error(`Translation failed: ${detail}`);
+  }
+
+  const translatedText = data?.responseData?.translatedText;
+  if (!translatedText || typeof translatedText !== 'string') {
+    throw new Error('Translation API returned empty or invalid response');
+  }
+
+  // Match original casing if input was all uppercase
+  const isUppercase = trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed);
+  return isUppercase ? translatedText.toUpperCase() : translatedText;
 }
 
 /**
