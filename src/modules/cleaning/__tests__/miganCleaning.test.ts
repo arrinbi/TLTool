@@ -152,25 +152,39 @@ describe('MI-GAN AI Cleaning Engine Integration', () => {
     const mockRun = vi.fn().mockImplementation(async (feeds) => {
       expect(feeds.image).toBeDefined();
       expect(feeds.mask).toBeDefined();
+      expect(feeds.image.type).toBe('uint8');
+      expect(feeds.mask.type).toBe('uint8');
       expect(feeds.image.dims).toEqual([1, 3, height, width]);
       expect(feeds.mask.dims).toEqual([1, 1, height, width]);
 
-      // Mock output tensor in Float32 normalized [0..1] range representing inpainted white pixels
-      const outData = new Float32Array(3 * numPixels);
-      outData.fill(1.0); // 1.0 * 255 = 255 (white)
+      // Verify mask polarity: mask[i] === 1 in TLTool mask corresponds to 0 (inpaint region) in ONNX mask input
+      // mask[i] === 0 in TLTool mask corresponds to 255 (preserve region) in ONNX mask input
+      for (let i = 0; i < numPixels; i++) {
+        if (i >= 20 && i < 80) {
+          expect(feeds.mask.data[i]).toBe(0);
+        } else {
+          expect(feeds.mask.data[i]).toBe(255);
+        }
+      }
+
+      // Mock output tensor in Uint8 [0..255] range representing inpainted white pixels
+      const outData = new Uint8Array(3 * numPixels);
+      outData.fill(255); // 255 (white)
 
       return {
-        output: {
+        result: {
+          type: 'uint8',
           data: outData,
+          dims: [1, 3, height, width],
         },
       };
     });
 
     class MockTensor {
       type: string;
-      data: Float32Array;
+      data: Uint8Array | Float32Array;
       dims: number[];
-      constructor(type: string, data: Float32Array, dims: number[]) {
+      constructor(type: string, data: Uint8Array | Float32Array, dims: number[]) {
         this.type = type;
         this.data = data;
         this.dims = dims;
