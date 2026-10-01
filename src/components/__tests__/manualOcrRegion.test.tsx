@@ -310,4 +310,65 @@ describe('Manual OCR Region Selection Feature (#7)', () => {
       expect(screen.getByText(/Detected Regions \(0\)/i)).toBeDefined();
     });
   });
+
+  it('7. Runs OCR on a manual region, updating text while preserving metadata, and handles failure safely', async () => {
+    const recognizeSpy = vi.spyOn(ocrService, 'recognizeRegionText').mockResolvedValue('RECOGNIZED TEXT');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+    });
+
+    // 1. Switch to Manual Mode and draw a manual region
+    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
+    fireEvent.click(manualBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+
+    // Verify initial region created has empty text initially
+    const textArea = await waitFor(() => screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement);
+    expect(textArea.value).toBe('');
+
+    // Click "Run OCR" button on selected region
+    const runOcrBtn = screen.getByRole('button', { name: /Run OCR/i });
+    fireEvent.click(runOcrBtn);
+
+    expect(recognizeSpy).toHaveBeenCalledTimes(1);
+
+    // Verify OCR result is written into text field and region remains present
+    await waitFor(() => {
+      expect(textArea.value).toBe('RECOGNIZED TEXT');
+    });
+
+    // Test OCR Failure
+    recognizeSpy.mockRejectedValueOnce(new Error('OCR engine error'));
+    fireEvent.click(runOcrBtn);
+
+    // Verify processing state clears and region remains intact with previous text
+    await waitFor(() => {
+      expect(screen.queryByText('Recognizing text...')).toBeNull();
+      expect(textArea.value).toBe('RECOGNIZED TEXT');
+    });
+  });
 });
