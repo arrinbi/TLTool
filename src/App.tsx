@@ -7,6 +7,7 @@ import type {
   BoundingBox,
   RegionCategory,
   ManualTool,
+  CropRect,
 } from './types';
 import { HeaderToolbar } from './components/HeaderToolbar';
 import { PageManager } from './components/PageManager';
@@ -15,6 +16,7 @@ import { RegionInspector } from './components/RegionInspector';
 import { detectTextRegions, recognizeRegionText } from './modules/ocr/ocrService';
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
+import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
 
 export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
@@ -26,6 +28,10 @@ export function App() {
   const [brushSize, setBrushSize] = useState<number>(15);
   const [manualCategory, setManualCategory] = useState<RegionCategory>('bubble-oval');
   const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
+
+  // Crop Tool State
+  const [isCropMode, setIsCropMode] = useState<boolean>(false);
+  const [cropRect, setCropRect] = useState<CropRect | null>(null);
 
   const handleSelectDetectionMode = useCallback((mode: 'auto' | 'manual') => {
     setDetectionMode(mode);
@@ -83,6 +89,8 @@ export function App() {
               cleanedUrl: url,
               width: 600,
               height: 900,
+                originalWidth: 600,
+                originalHeight: 900,
               regions: [],
               history: [],
               historyIndex: -1,
@@ -117,14 +125,19 @@ export function App() {
       });
 
       const pageId = `page-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const imgWidth = img.naturalWidth || img.width;
+      const imgHeight = img.naturalHeight || img.height;
+
       const pageObj: ManhwaPage = {
         id: pageId,
         name: file.name,
         file,
         originalUrl: url,
         cleanedUrl: url,
-        width: img.naturalWidth || img.width,
-        height: img.naturalHeight || img.height,
+        width: imgWidth,
+        height: imgHeight,
+        originalWidth: imgWidth,
+        originalHeight: imgHeight,
         regions: [],
         history: [],
         historyIndex: -1,
@@ -201,7 +214,8 @@ export function App() {
     );
 
     try {
-      const text = await recognizeRegionText(selectedPage.originalUrl, targetRegion.bbox);
+      const imageSource = selectedPage.croppedUrl || selectedPage.originalUrl;
+      const text = await recognizeRegionText(imageSource, targetRegion.bbox);
       setPages((prev) =>
         prev.map((p) => {
           if (p.id !== selectedPage.id) return p;
@@ -402,6 +416,89 @@ export function App() {
     );
   }, [selectedPage]);
 
+  // Crop Tool Handlers
+  const handleToggleCropMode = useCallback(() => {
+    if (!selectedPage) return;
+
+    if (isCropMode) {
+      setIsCropMode(false);
+      setCropRect(null);
+    } else {
+      setIsCropMode(true);
+      setCropRect({
+        x: 0,
+        y: 0,
+        width: selectedPage.width,
+        height: selectedPage.height,
+      });
+    }
+  }, [isCropMode, selectedPage]);
+
+  const handleResetCropRect = useCallback(() => {
+    if (!selectedPage) return;
+    setCropRect({
+      x: 0,
+      y: 0,
+      width: selectedPage.width,
+      height: selectedPage.height,
+    });
+  }, [selectedPage]);
+
+  const handleCancelCrop = useCallback(() => {
+    setIsCropMode(false);
+    setCropRect(null);
+  }, []);
+
+  const handleApplyCrop = useCallback(async () => {
+    if (!selectedPage || !cropRect) return;
+
+    if (cropRect.width < 10 || cropRect.height < 10) {
+      alert('Crop area is too small. Please select a larger crop rectangle.');
+      return;
+    }
+
+    setPages((prev) =>
+      prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true, processingMessage: 'Cropping page...' } : p))
+    );
+
+    try {
+      const baseSource = selectedPage.croppedUrl || selectedPage.originalUrl;
+      const [newCleanedUrl, newCroppedUrl] = await Promise.all([
+        cropImageSource(selectedPage.cleanedUrl, cropRect),
+        cropImageSource(baseSource, cropRect),
+      ]);
+
+      const newRegions = transformRegionsForCrop(selectedPage.regions, cropRect);
+
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPage.id) return p;
+          return pushPageHistory(
+            { ...p, isProcessing: false, processingMessage: undefined },
+            newCleanedUrl,
+            newRegions,
+            'Crop page',
+            {
+              croppedUrl: newCroppedUrl,
+              width: cropRect.width,
+              height: cropRect.height,
+            }
+          );
+        })
+      );
+
+      setIsCropMode(false);
+      setCropRect(null);
+      setSelectedRegionId(null);
+    } catch (err) {
+      console.error('Failed to crop page:', err);
+      alert('Failed to crop page.');
+      setPages((prev) =>
+        prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
+      );
+    }
+  }, [selectedPage, cropRect]);
+
   // Export handlers
   const handleExportCleanedImage = useCallback(() => {
     if (!selectedPage) return;
@@ -496,8 +593,19 @@ export function App() {
           isDrawingMode={isDrawingMode}
           setIsDrawingMode={setIsDrawingMode}
           onRunOcr={() =>
-            selectedPage && runTextDetectionOnPage(selectedPage.id, selectedPage.originalUrl)
+            selectedPage &&
+            runTextDetectionOnPage(
+              selectedPage.id,
+              selectedPage.croppedUrl || selectedPage.originalUrl
+            )
           }
+          isCropMode={isCropMode}
+          onToggleCropMode={handleToggleCropMode}
+          cropRect={cropRect}
+          onChangeCropRect={setCropRect}
+          onApplyCrop={handleApplyCrop}
+          onCancelCrop={handleCancelCrop}
+          onResetCropRect={handleResetCropRect}
         />
 
         {/* Sidebar Right: Region Inspector & Cleaning Options */}
@@ -516,7 +624,11 @@ export function App() {
           manualCategory={manualCategory}
           onSelectManualCategory={setManualCategory}
           onRunOcr={() =>
-            selectedPage && runTextDetectionOnPage(selectedPage.id, selectedPage.originalUrl)
+            selectedPage &&
+            runTextDetectionOnPage(
+              selectedPage.id,
+              selectedPage.croppedUrl || selectedPage.originalUrl
+            )
           }
           onRunOcrOnRegion={handleRunOcrOnRegion}
           onCleanRegion={handleCleanRegion}

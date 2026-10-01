@@ -36,8 +36,18 @@ export interface TextRegion {
   };
 }
 
+export interface CropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface HistoryEntry {
   cleanedUrl: string;
+  croppedUrl?: string;
+  width?: number;
+  height?: number;
   regions: TextRegion[];
   description: string;
 }
@@ -47,9 +57,12 @@ export interface ManhwaPage {
   name: string;
   file: File;
   originalUrl: string; // Pristine uploaded image object URL
+  croppedUrl?: string;  // Cropped base image URL if page has been cropped
   cleanedUrl: string;  // Current cleaned canvas object URL
   width: number;
   height: number;
+  originalWidth?: number;  // Initial pristine uploaded image width
+  originalHeight?: number; // Initial pristine uploaded image height
   regions: TextRegion[];
   history: HistoryEntry[];
   historyIndex: number; // Index into history array (-1 for original base state)
