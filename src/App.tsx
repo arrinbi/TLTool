@@ -95,6 +95,7 @@ export function App() {
         }, 'image/png');
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedPage = pages.find((p) => p.id === selectedPageId) || null;
