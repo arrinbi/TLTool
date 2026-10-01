@@ -18,6 +18,7 @@ export interface TextRegion {
   confidence: number; // 0 to 100
   isCleaned: boolean;
   isManual?: boolean;
+  source?: 'manual' | 'auto';
   category?: RegionCategory;
   cleaningMethod?: CleaningMethod;
   originalText?: string;
