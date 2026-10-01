@@ -12,7 +12,7 @@ import { HeaderToolbar } from './components/HeaderToolbar';
 import { PageManager } from './components/PageManager';
 import { MainWorkspace } from './components/MainWorkspace';
 import { RegionInspector } from './components/RegionInspector';
-import { detectTextRegions } from './modules/ocr/ocrService';
+import { detectTextRegions, recognizeRegionText } from './modules/ocr/ocrService';
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 
@@ -148,19 +148,20 @@ export function App() {
     );
 
     try {
-      const regions = await detectTextRegions(imageSource);
+      const detected = await detectTextRegions(imageSource);
+      const autoRegions = detected.map((r) => ({ ...r, isManual: false, source: 'auto' as const }));
 
       setPages((prev) =>
-        prev.map((p) =>
-          p.id === pageId
-            ? {
-                ...p,
-                regions,
-                isProcessing: false,
-                processingMessage: undefined,
-              }
-            : p
-        )
+        prev.map((p) => {
+          if (p.id !== pageId) return p;
+          const existingManual = p.regions.filter((r) => r.isManual || r.source === 'manual');
+          return {
+            ...p,
+            regions: [...existingManual, ...autoRegions],
+            isProcessing: false,
+            processingMessage: undefined,
+          };
+        })
       );
     } catch (err) {
       console.error('Failed to run text detection:', err);
@@ -187,6 +188,33 @@ export function App() {
       return remaining;
     });
   }, [selectedPageId]);
+
+  // OCR Single Region Text Recognition
+  const handleRunOcrOnRegion = useCallback(async (regionId: string) => {
+    if (!selectedPage) return;
+    const targetRegion = selectedPage.regions.find((r) => r.id === regionId);
+    if (!targetRegion) return;
+
+    setPages((prev) =>
+      prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true, processingMessage: 'Recognizing text...' } : p))
+    );
+
+    try {
+      const text = await recognizeRegionText(selectedPage.originalUrl, targetRegion.bbox);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPage.id) return p;
+          const updatedRegions = p.regions.map((r) => (r.id === regionId ? { ...r, text } : r));
+          return { ...p, regions: updatedRegions, isProcessing: false, processingMessage: undefined };
+        })
+      );
+    } catch (err) {
+      console.error('Failed to recognize region text:', err);
+      setPages((prev) =>
+        prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
+      );
+    }
+  }, [selectedPage]);
 
   // Region Operations
   const handleUpdateRegion = useCallback((updatedRegion: TextRegion) => {
@@ -219,6 +247,7 @@ export function App() {
         confidence: 100,
         isCleaned: false,
         isManual: true,
+        source: 'manual',
         category: category || 'bubble-oval',
         brushMask: extra?.brushMask,
         isBrush: extra?.isBrush,
@@ -488,6 +517,7 @@ export function App() {
           onRunOcr={() =>
             selectedPage && runTextDetectionOnPage(selectedPage.id, selectedPage.originalUrl)
           }
+          onRunOcrOnRegion={handleRunOcrOnRegion}
           onCleanRegion={handleCleanRegion}
           onCleanAllRegions={handleCleanAllRegions}
           onRevertRegion={handleRevertRegion}

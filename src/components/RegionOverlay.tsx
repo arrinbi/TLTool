@@ -143,8 +143,8 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
           const width = Math.abs(currentPos.x - drawStart.x);
           const height = Math.abs(currentPos.y - drawStart.y);
 
-          // Only create if box has a minimum size
-          if (width > 10 && height > 10) {
+          // Prevent creation of zero-width or zero-height regions or accidental micro-clicks
+          if (width > 5 && height > 5) {
             onAddRegion({ x: minX, y: minY, width, height }, manualCategory);
           }
         }
@@ -219,10 +219,14 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
             {/* Tag / Status label */}
             <div
               className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white shadow-sm flex items-center gap-1 ${
-                isSelected ? 'bg-indigo-600' : 'bg-amber-600'
+                isSelected
+                  ? 'bg-indigo-600'
+                  : region.isManual || region.source === 'manual'
+                  ? 'bg-amber-600'
+                  : 'bg-slate-700'
               }`}
             >
-              <span>Text</span>
+              <span>{region.isManual || region.source === 'manual' ? 'Manual' : 'Text'}</span>
             </div>
           </div>
         );

@@ -29,6 +29,7 @@ interface RegionInspectorProps {
   manualCategory: RegionCategory;
   onSelectManualCategory: (category: RegionCategory) => void;
   onRunOcr: () => void;
+  onRunOcrOnRegion?: (regionId: string) => void;
   onCleanRegion: (regionId: string, options: CleaningOptions) => void;
   onCleanAllRegions: (options: CleaningOptions) => void;
   onRevertRegion: (regionId: string) => void;
@@ -49,6 +50,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   manualCategory,
   onSelectManualCategory,
   onRunOcr,
+  onRunOcrOnRegion,
   onCleanRegion,
   onCleanAllRegions,
   onRevertRegion,
@@ -294,7 +296,20 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
 
             {/* Region Text Content */}
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] text-slate-400 font-medium">Detected Text</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] text-slate-400 font-medium">Detected Text</label>
+                {onRunOcrOnRegion && (
+                  <button
+                    onClick={() => onRunOcrOnRegion(selectedRegion.id)}
+                    disabled={page.isProcessing}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Recognize text in this region with OCR"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Run OCR</span>
+                  </button>
+                )}
+              </div>
               <textarea
                 rows={3}
                 value={selectedRegion.text}
