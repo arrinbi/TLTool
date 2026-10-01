@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles, Square, Paintbrush } from 'lucide-react';
-import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory, ManualTool } from '../types';
+import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles, Square, Paintbrush, Crop, Check, X } from 'lucide-react';
+import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory, ManualTool, CropRect } from '../types';
 import { RegionOverlay } from './RegionOverlay';
+import { CropOverlay } from './CropOverlay';
 
 interface MainWorkspaceProps {
   page: ManhwaPage | null;
@@ -30,6 +31,14 @@ interface MainWorkspaceProps {
   isDrawingMode: boolean;
   setIsDrawingMode: (drawing: boolean) => void;
   onRunOcr: () => void;
+  // Crop Tool Props
+  isCropMode?: boolean;
+  onToggleCropMode?: () => void;
+  cropRect?: CropRect | null;
+  onChangeCropRect?: (rect: CropRect) => void;
+  onApplyCrop?: () => void;
+  onCancelCrop?: () => void;
+  onResetCropRect?: () => void;
 }
 
 export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
@@ -50,6 +59,13 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
   isDrawingMode,
   setIsDrawingMode,
   onRunOcr,
+  isCropMode = false,
+  onToggleCropMode,
+  cropRect,
+  onChangeCropRect,
+  onApplyCrop,
+  onCancelCrop,
+  onResetCropRect,
 }) => {
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('cleaned');
   const [zoom, setZoom] = useState<number>(1);
@@ -165,8 +181,56 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
           </button>
         </div>
 
-        {/* Mode & Zoom Controls */}
+        {/* Crop Tool & Mode Controls */}
         <div className="flex items-center gap-2">
+          {/* Crop Mode Controls */}
+          {onToggleCropMode && (
+            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+              <button
+                onClick={onToggleCropMode}
+                className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  isCropMode
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+                title="Crop Tool"
+              >
+                <Crop className="w-3.5 h-3.5" />
+                <span>Crop</span>
+              </button>
+
+              {isCropMode && (
+                <>
+                  <button
+                    onClick={onApplyCrop}
+                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                    title="Apply Crop Selection"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Apply</span>
+                  </button>
+                  {onResetCropRect && (
+                    <button
+                      onClick={onResetCropRect}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition-colors cursor-pointer"
+                      title="Reset Crop Box to Full Page"
+                    >
+                      <span>Reset</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={onCancelCrop}
+                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Cancel Crop"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Cancel</span>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Detection Mode Switcher */}
           <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
             <button
@@ -345,8 +409,20 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
               className="block object-contain"
             />
 
-            {/* Bounding Box Region Overlay (Active in Cleaned View) */}
-            {viewMode === 'cleaned' && (
+            {/* Crop Overlay when Crop Mode active */}
+            {isCropMode && cropRect && onChangeCropRect && (
+              <CropOverlay
+                imageWidth={page.width}
+                imageHeight={page.height}
+                displayWidth={renderedWidth}
+                displayHeight={renderedHeight}
+                cropRect={cropRect}
+                onChangeCropRect={onChangeCropRect}
+              />
+            )}
+
+            {/* Bounding Box Region Overlay (Active in Cleaned View when not cropping) */}
+            {!isCropMode && viewMode === 'cleaned' && (
               <RegionOverlay
                 imageWidth={page.width}
                 imageHeight={page.height}
