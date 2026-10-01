@@ -13,7 +13,7 @@ import { HeaderToolbar } from './components/HeaderToolbar';
 import { PageManager } from './components/PageManager';
 import { MainWorkspace } from './components/MainWorkspace';
 import { RegionInspector } from './components/RegionInspector';
-import { detectTextRegions, recognizeRegionText } from './modules/ocr/ocrService';
+import { detectTextRegions, recognizeRegionText, createOcrWorker } from './modules/ocr/ocrService';
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
@@ -157,13 +157,22 @@ export function App() {
   const runTextDetectionOnPage = async (pageId: string, imageSource: string) => {
     setPages((prev) =>
       prev.map((p) =>
-        p.id === pageId ? { ...p, isProcessing: true, processingMessage: 'Detecting text...' } : p
+        p.id === pageId ? { ...p, isProcessing: true, processingMessage: 'Detecting text regions...' } : p
       )
     );
 
     try {
       const detected = await detectTextRegions(imageSource);
-      const autoRegions = detected.map((r) => ({ ...r, isManual: false, source: 'auto' as const }));
+      const validDetected = detected.filter(
+        (r) => r.bbox && r.bbox.width > 0 && r.bbox.height > 0
+      );
+
+      const autoRegions = validDetected.map((r) => ({
+        ...r,
+        text: r.text || '',
+        isManual: false,
+        source: 'auto' as const,
+      }));
 
       setPages((prev) =>
         prev.map((p) => {
@@ -172,13 +181,62 @@ export function App() {
           return {
             ...p,
             regions: [...existingManual, ...autoRegions],
-            isProcessing: false,
-            processingMessage: undefined,
           };
         })
       );
+
+      if (autoRegions.length > 0) {
+        let worker: any = null;
+        try {
+          worker = await createOcrWorker();
+        } catch (wErr) {
+          console.warn('Could not pre-initialize Tesseract worker:', wErr);
+        }
+
+        try {
+          for (let i = 0; i < autoRegions.length; i++) {
+            const region = autoRegions[i];
+            setPages((prev) =>
+              prev.map((p) =>
+                p.id === pageId
+                  ? {
+                      ...p,
+                      processingMessage: `Recognizing text ${i + 1}/${autoRegions.length}...`,
+                    }
+                  : p
+              )
+            );
+
+            try {
+              const text = await recognizeRegionText(imageSource, region.bbox, worker);
+              setPages((prev) =>
+                prev.map((p) => {
+                  if (p.id !== pageId) return p;
+                  return {
+                    ...p,
+                    regions: p.regions.map((r) =>
+                      r.id === region.id ? { ...r, text: text !== undefined && text !== '' ? text : r.text } : r
+                    ),
+                  };
+                })
+              );
+            } catch (regErr) {
+              console.error(`Failed automatic OCR for region ${region.id}:`, regErr);
+            }
+          }
+        } finally {
+          if (worker) {
+            try {
+              await worker.terminate();
+            } catch (tErr) {
+              console.warn('Failed to terminate worker:', tErr);
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error('Failed to run text detection:', err);
+    } finally {
       setPages((prev) =>
         prev.map((p) =>
           p.id === pageId

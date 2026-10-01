@@ -626,24 +626,51 @@ export async function detectTextRegions(
 }
 
 /**
+ * Helper to safely create a reusable Tesseract OCR worker.
+ */
+export async function createOcrWorker(): Promise<any> {
+  try {
+    return await createWorker('eng');
+  } catch (err) {
+    console.warn('Failed to create OCR worker:', err);
+    return null;
+  }
+}
+
+/**
  * Re-run OCR on a specific bounding box region of an image.
  */
 export async function recognizeRegionText(
   imageSource: string | HTMLCanvasElement,
-  bbox: BoundingBox
+  bbox: BoundingBox,
+  worker?: any
 ): Promise<string> {
+  if (!bbox || bbox.width <= 0 || bbox.height <= 0) {
+    return '';
+  }
+
+  let createdWorker = false;
   try {
-    const worker = await createWorker('eng');
-    const ret = await worker.recognize(imageSource, {
-      rectangle: {
-        left: bbox.x,
-        top: bbox.y,
-        width: bbox.width,
-        height: bbox.height,
-      },
-    });
-    await worker.terminate();
-    return ret.data.text.trim();
+    let tesseractWorker = worker;
+    if (!tesseractWorker) {
+      tesseractWorker = await createWorker('eng');
+      createdWorker = true;
+    }
+
+    const rectangle = {
+      left: Math.max(0, Math.round(bbox.x)),
+      top: Math.max(0, Math.round(bbox.y)),
+      width: Math.max(1, Math.round(bbox.width)),
+      height: Math.max(1, Math.round(bbox.height)),
+    };
+
+    const ret = await tesseractWorker.recognize(imageSource, { rectangle });
+
+    if (createdWorker) {
+      await tesseractWorker.terminate();
+    }
+
+    return ret.data?.text ? ret.data.text.trim() : '';
   } catch (err) {
     console.error('Failed to recognize region text:', err);
     return '';
