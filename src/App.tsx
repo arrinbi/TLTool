@@ -731,6 +731,7 @@ export function App() {
         <MainWorkspace
           page={selectedPage}
           selectedRegionId={selectedRegionId}
+          activeStage={activeStage}
           onSelectRegion={setSelectedRegionId}
           onUpdateRegion={handleUpdateRegion}
           onAddRegion={handleAddRegion}
@@ -765,6 +766,7 @@ export function App() {
         <RegionInspector
           page={selectedPage}
           selectedRegionId={selectedRegionId}
+          activeStage={activeStage}
           onSelectRegion={setSelectedRegionId}
           onUpdateRegion={handleUpdateRegion}
           onDeleteRegion={handleDeleteRegion}

@@ -17,7 +17,7 @@ vi.mock('tesseract.js', () => ({
 }));
 
 describe('Translation MVP Workflow Integration', () => {
-  it('1. Displays original text and Indonesian translation section in RegionInspector and allows manual translation edit without overwriting original text', async () => {
+  it('1. Displays original text and Indonesian translation section in Stage 2 Translation panel and allows manual translation edit without overwriting original text', async () => {
     vi.spyOn(ocrService, 'recognizeRegionText').mockResolvedValue('WHAT IS THIS?!');
     vi.spyOn(ocrService, 'detectTextRegions').mockResolvedValue([
       {
@@ -33,18 +33,27 @@ describe('Translation MVP Workflow Integration', () => {
 
     render(<App />);
 
-    // Click Automatic Detection to populate regions
+    // Stage 1: Click Automatic Detection to populate regions
     const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
     fireEvent.click(autoBtn);
+
+    // Switch to Stage 2: Translation
+    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /2\. Translation/i }));
+    fireEvent.click(stage2Btn);
+
+    // Verify Stage 2 Translation Studio panel is active and OCR/Cleaning controls are hidden
+    expect(screen.getByText('Translation Studio')).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Clean All/i })).toBeNull();
 
     // Wait for detected region item and select it
     const regionItem = await waitFor(() => screen.getByText(/WHAT IS THIS\?!/i));
     fireEvent.click(regionItem);
 
-    // Verify Original Text label and content
+    // Verify Read-Only Original Text label and content
     expect(screen.getByText('Original Text')).toBeDefined();
     const originalTextarea = screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement;
     expect(originalTextarea.value).toBe('WHAT IS THIS?!');
+    expect(originalTextarea.readOnly).toBe(true);
 
     // Verify Indonesian Translation label and field
     expect(screen.getByText('Indonesian Translation')).toBeDefined();
@@ -59,7 +68,7 @@ describe('Translation MVP Workflow Integration', () => {
     expect(originalTextarea.value).toBe('WHAT IS THIS?!');
   });
 
-  it('2. Clicking Translate on selected region fetches translation and updates UI while preserving original text', async () => {
+  it('2. Clicking Translate on selected region in Stage 2 fetches translation and updates UI while preserving original text', async () => {
     vi.spyOn(ocrService, 'recognizeRegionText').mockResolvedValue('WHAT IS THIS?!');
     vi.spyOn(ocrService, 'detectTextRegions').mockResolvedValue([
       {
@@ -75,9 +84,13 @@ describe('Translation MVP Workflow Integration', () => {
 
     render(<App />);
 
-    // Click Automatic Detection
+    // Stage 1: Click Automatic Detection
     const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
     fireEvent.click(autoBtn);
+
+    // Switch to Stage 2: Translation
+    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /2\. Translation/i }));
+    fireEvent.click(stage2Btn);
 
     // Select first region
     const regionItem = await waitFor(() => screen.getByText(/WHAT IS THIS\?!/i));
@@ -98,7 +111,7 @@ describe('Translation MVP Workflow Integration', () => {
     expect(originalTextarea.value).toBe('WHAT IS THIS?!');
   });
 
-  it('3. Clicking Translate All translates all regions in page bulk action', async () => {
+  it('3. Clicking Translate All in Stage 2 translates all regions in page bulk action', async () => {
     vi.spyOn(ocrService, 'recognizeRegionText').mockImplementation(async (_img, bbox) => {
       if (bbox.y < 300) return 'WHAT IS THIS?!';
       return 'THE MANHWA HAS';
@@ -126,13 +139,17 @@ describe('Translation MVP Workflow Integration', () => {
 
     render(<App />);
 
-    // Run Automatic Detection to detect regions
+    // Stage 1: Run Automatic Detection to detect regions
     const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
     fireEvent.click(autoBtn);
 
     await waitFor(() => screen.getByText(/WHAT IS THIS\?!/i));
 
-    // Find and click Translate All button
+    // Switch to Stage 2: Translation
+    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /2\. Translation/i }));
+    fireEvent.click(stage2Btn);
+
+    // Find and click Translate All button in Stage 2 panel
     const translateAllButton = screen.getByRole('button', { name: /Translate All/i });
     fireEvent.click(translateAllButton);
 
