@@ -107,18 +107,20 @@ export async function inpaintMIGAN(
 
   // ONNX Tensor Preprocessing & Execution
   const numPixels = width * height;
-  const imageRgb = new Float32Array(3 * numPixels);
-  const maskData = new Float32Array(numPixels);
+  const imageRgb = new Uint8Array(3 * numPixels);
+  const maskData = new Uint8Array(numPixels);
 
-  // Convert ImageData RGBA -> RGB Float32 [1, 3, H, W]
+  // Convert ImageData RGBA -> RGB Uint8 [1, 3, H, W]
+  // Mask layout Uint8 [1, 1, H, W]:
+  // Model contract expect uint8 tensors:
+  // mask = 0 for inpaint region (where mask[i] > 0 in TLTool mask),
+  // mask = 255 for preserved region.
   for (let i = 0; i < numPixels; i++) {
-    imageRgb[i] = data[i * 4] / 255.0; // R
-    imageRgb[numPixels + i] = data[i * 4 + 1] / 255.0; // G
-    imageRgb[2 * numPixels + i] = data[i * 4 + 2] / 255.0; // B
+    imageRgb[i] = data[i * 4]; // R
+    imageRgb[numPixels + i] = data[i * 4 + 1]; // G
+    imageRgb[2 * numPixels + i] = data[i * 4 + 2]; // B
 
-    if (mask && mask[i]) {
-      maskData[i] = 1.0;
-    }
+    maskData[i] = mask && mask[i] ? 0 : 255;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,8 +129,8 @@ export async function inpaintMIGAN(
     throw new Error('ONNX Tensor constructor is not available.');
   }
 
-  const imageTensor = new TensorClass('float32', imageRgb, [1, 3, height, width]);
-  const maskTensor = new TensorClass('float32', maskData, [1, 1, height, width]);
+  const imageTensor = new TensorClass('uint8', imageRgb, [1, 3, height, width]);
+  const maskTensor = new TensorClass('uint8', maskData, [1, 1, height, width]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const feeds: Record<string, any> = {
@@ -137,17 +139,15 @@ export async function inpaintMIGAN(
   };
 
   const results = await session.run(feeds);
-  const outputTensor = results?.output || (results ? Object.values(results)[0] : null);
+  const outputTensor = results?.result || results?.output || (results ? Object.values(results)[0] : null);
 
   if (outputTensor && outputTensor.data) {
-    const outData = outputTensor.data as Float32Array | number[];
-    const isScaled255 = Array.from(outData.slice(0, Math.min(100, outData.length))).some((v) => v > 1.0);
-    const scale = isScaled255 ? 1 : 255;
+    const outData = outputTensor.data as Uint8Array | Float32Array | number[];
 
     for (let i = 0; i < numPixels; i++) {
-      const r = Math.min(255, Math.max(0, Math.round(outData[i] * scale)));
-      const g = Math.min(255, Math.max(0, Math.round(outData[numPixels + i] * scale)));
-      const b = Math.min(255, Math.max(0, Math.round(outData[2 * numPixels + i] * scale)));
+      const r = Math.min(255, Math.max(0, Math.round(outData[i])));
+      const g = Math.min(255, Math.max(0, Math.round(outData[numPixels + i])));
+      const b = Math.min(255, Math.max(0, Math.round(outData[2 * numPixels + i])));
 
       data[i * 4] = r;
       data[i * 4 + 1] = g;
