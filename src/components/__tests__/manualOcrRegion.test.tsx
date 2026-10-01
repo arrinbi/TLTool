@@ -147,13 +147,7 @@ describe('Manual OCR Region Selection Feature (#7)', () => {
   });
 
   it('4. Keeps manual regions separate from automatic regions when running automatic OCR', async () => {
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
-    });
-
-    // Mock OCR detection result
+    vi.spyOn(ocrService, 'recognizeRegionText').mockResolvedValue('Auto Detected Text');
     vi.spyOn(ocrService, 'detectTextRegions').mockResolvedValue([
       {
         id: 'auto-1',
@@ -165,6 +159,12 @@ describe('Manual OCR Region Selection Feature (#7)', () => {
         source: 'auto',
       },
     ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+    });
 
     // 1. Switch to Manual Mode and draw a manual region
     const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
@@ -192,7 +192,9 @@ describe('Manual OCR Region Selection Feature (#7)', () => {
     fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
 
-    expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+    });
 
     // 2. Click Automatic Detection to run auto OCR
     const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
@@ -201,7 +203,7 @@ describe('Manual OCR Region Selection Feature (#7)', () => {
     // Should now have 2 regions: 1 existing manual region + 1 newly detected auto region
     await waitFor(() => {
       expect(screen.getByText(/Detected Regions \(2\)/i)).toBeDefined();
-      expect(screen.getByText('Auto Detected Text')).toBeDefined();
+      expect(screen.getAllByText('Auto Detected Text').length).toBeGreaterThan(0);
     });
   });
 
@@ -346,29 +348,223 @@ describe('Manual OCR Region Selection Feature (#7)', () => {
     fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
 
-    // Verify initial region created has empty text initially
-    const textArea = await waitFor(() => screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement);
-    expect(textArea.value).toBe('');
-
-    // Click "Run OCR" button on selected region
-    const runOcrBtn = screen.getByRole('button', { name: /Run OCR/i });
-    fireEvent.click(runOcrBtn);
-
+    // With automatic OCR on region creation, recognizeRegionText is called automatically upon creation
     expect(recognizeSpy).toHaveBeenCalledTimes(1);
 
-    // Verify OCR result is written into text field and region remains present
+    // Verify OCR result is automatically written into text field
+    const textArea = await waitFor(() => screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement);
     await waitFor(() => {
       expect(textArea.value).toBe('RECOGNIZED TEXT');
     });
 
-    // Test OCR Failure
+    // Click "Run OCR" button on selected region to test manual re-OCR
+    recognizeSpy.mockResolvedValueOnce('RE-RUN RECOGNIZED TEXT');
+    const runOcrBtn = screen.getByRole('button', { name: /Run OCR/i });
+    fireEvent.click(runOcrBtn);
+
+    expect(recognizeSpy).toHaveBeenCalledTimes(2);
+
+    await waitFor(() => {
+      expect(textArea.value).toBe('RE-RUN RECOGNIZED TEXT');
+    });
+
+    // Test manual re-OCR Failure
     recognizeSpy.mockRejectedValueOnce(new Error('OCR engine error'));
     fireEvent.click(runOcrBtn);
 
     // Verify processing state clears and region remains intact with previous text
     await waitFor(() => {
       expect(screen.queryByText('Recognizing text...')).toBeNull();
-      expect(textArea.value).toBe('RECOGNIZED TEXT');
+      expect(textArea.value).toBe('RE-RUN RECOGNIZED TEXT');
+    });
+  });
+
+  it('8. Automatically triggers OCR on manual rectangle creation and populates region text', async () => {
+    const recognizeSpy = vi.spyOn(ocrService, 'recognizeRegionText').mockResolvedValue('AUTO RECT TEXT');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+    });
+
+    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
+    fireEvent.click(manualBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 250, clientY: 250, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 250, clientY: 250, pointerId: 1 });
+
+    expect(recognizeSpy).toHaveBeenCalledTimes(1);
+
+    const textArea = await waitFor(() => screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement);
+    await waitFor(() => {
+      expect(textArea.value).toBe('AUTO RECT TEXT');
+    });
+  });
+
+  it('9. Automatically triggers OCR on manual brush creation and populates region text', async () => {
+    const recognizeSpy = vi.spyOn(ocrService, 'recognizeRegionText').mockResolvedValue('AUTO BRUSH TEXT');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+    });
+
+    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
+    fireEvent.click(manualBtn);
+
+    // Switch tool to Brush in workspace controls toolbar
+    const brushToolBtn = screen.getByTitle('Brush Selection Tool');
+    fireEvent.click(brushToolBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 200, clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 200, clientY: 200, pointerId: 1 });
+
+    expect(recognizeSpy).toHaveBeenCalledTimes(1);
+
+    const textArea = await waitFor(() => screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement);
+    await waitFor(() => {
+      expect(textArea.value).toBe('AUTO BRUSH TEXT');
+    });
+  });
+
+  it('10. Creating multiple manual regions sequentially triggers OCR only for newly created regions', async () => {
+    const recognizeSpy = vi.spyOn(ocrService, 'recognizeRegionText')
+      .mockResolvedValueOnce('REGION 1 TEXT')
+      .mockResolvedValueOnce('REGION 2 TEXT');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+    });
+
+    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
+    fireEvent.click(manualBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Draw Region 1
+    fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+
+    await waitFor(() => {
+      expect(recognizeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // Draw Region 2
+    fireEvent.pointerDown(canvasOverlay, { clientX: 200, clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 300, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 300, clientY: 300, pointerId: 1 });
+
+    await waitFor(() => {
+      expect(recognizeSpy).toHaveBeenCalledTimes(2);
+    });
+
+    // Total regions should be 2, without duplicate OCR calls on region 1
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(2\)/i)).toBeDefined();
+    });
+  });
+
+  it('11. Handles OCR failure on manual creation safely without removing the region', async () => {
+    const recognizeSpy = vi.spyOn(ocrService, 'recognizeRegionText').mockRejectedValue(new Error('Tesseract failed'));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+    });
+
+    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
+    fireEvent.click(manualBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+
+    expect(recognizeSpy).toHaveBeenCalledTimes(1);
+
+    // Verify region remains created and text field is present (empty)
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+      const textArea = screen.getByPlaceholderText('OCR Text output...') as HTMLTextAreaElement;
+      expect(textArea.value).toBe('');
+      expect(screen.queryByText('Recognizing text...')).toBeNull();
     });
   });
 });

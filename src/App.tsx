@@ -302,7 +302,7 @@ export function App() {
   }, [selectedPageId]);
 
   const handleAddRegion = useCallback(
-    (
+    async (
       bbox: BoundingBox,
       category?: RegionCategory,
       extra?: {
@@ -313,6 +313,10 @@ export function App() {
       }
     ) => {
       if (!selectedPageId) return;
+      const targetPage = pages.find((p) => p.id === selectedPageId);
+      if (!targetPage) return;
+
+      const pageId = targetPage.id;
       const newRegion: TextRegion = {
         id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         bbox,
@@ -330,13 +334,45 @@ export function App() {
 
       setPages((prev) =>
         prev.map((p) => {
-          if (p.id !== selectedPageId) return p;
-          return { ...p, regions: [...p.regions, newRegion] };
+          if (p.id !== pageId) return p;
+          return {
+            ...p,
+            regions: [...p.regions, newRegion],
+            isProcessing: true,
+            processingMessage: 'Recognizing text...',
+          };
         })
       );
       setSelectedRegionId(newRegion.id);
+
+      const imageSource = targetPage.croppedUrl || targetPage.originalUrl;
+      try {
+        const text = await recognizeRegionText(imageSource, newRegion.bbox);
+        setPages((prev) =>
+          prev.map((p) => {
+            if (p.id !== pageId) return p;
+            return {
+              ...p,
+              regions: p.regions.map((r) =>
+                r.id === newRegion.id ? { ...r, text: text !== undefined ? text : r.text } : r
+              ),
+              isProcessing: false,
+              processingMessage: undefined,
+            };
+          })
+        );
+      } catch (err) {
+        console.error(`Failed automatic OCR for new manual region ${newRegion.id}:`, err);
+        setPages((prev) =>
+          prev.map((p) =>
+            p.id === pageId
+              ? { ...p, isProcessing: false, processingMessage: undefined }
+              : p
+          )
+        );
+      }
     },
-    [selectedPageId]
+    [selectedPageId, pages]
   );
 
   const handleDeleteRegion = useCallback((regionId: string) => {

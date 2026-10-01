@@ -149,7 +149,11 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
 
-    expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+    // Wait for manual region creation and its automatic OCR to finish processing
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+      expect(screen.queryByText('Recognizing text...')).toBeNull();
+    });
 
     // Click Automatic Detection
     const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
@@ -159,14 +163,15 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     await waitFor(
       () => {
         expect(screen.getByText(/Detected Regions \(2\)/i)).toBeDefined();
-        expect(screen.getByText(/Auto Text Output/i)).toBeDefined();
+        expect(screen.getAllByText(/Auto Text Output/i).length).toBeGreaterThan(0);
       },
       { timeout: 4000 }
     );
 
-    // Verify recognizeRegionText was called ONLY ONCE for the auto region, NOT for the manual region
-    expect(recognizeSpy).toHaveBeenCalledTimes(1);
-    expect(recognizeSpy.mock.calls[0][1]).toEqual({ x: 300, y: 300, width: 100, height: 50 });
+    // Verify recognizeRegionText was called for manual creation (call 0), and once for auto region during Automatic Detection (call 1)
+    // Automatic Detection itself should NOT re-OCR the manual region
+    expect(recognizeSpy).toHaveBeenCalledTimes(2);
+    expect(recognizeSpy.mock.calls[1][1]).toEqual({ x: 300, y: 300, width: 100, height: 50 });
   });
 
   it('4. handles partial OCR failure gracefully, keeping all regions and continuing remaining OCR jobs', async () => {
