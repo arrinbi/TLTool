@@ -10,6 +10,7 @@ import {
   Plus,
   Square,
   Paintbrush,
+  Languages,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
@@ -33,6 +34,8 @@ interface RegionInspectorProps {
   onCleanRegion: (regionId: string, options: CleaningOptions) => void;
   onCleanAllRegions: (options: CleaningOptions) => void;
   onRevertRegion: (regionId: string) => void;
+  onTranslateRegion?: (regionId: string) => void;
+  onTranslateAllRegions?: () => void;
 }
 
 export const RegionInspector: React.FC<RegionInspectorProps> = ({
@@ -54,6 +57,8 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onCleanRegion,
   onCleanAllRegions,
   onRevertRegion,
+  onTranslateRegion,
+  onTranslateAllRegions,
 }) => {
   const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
   const [padding, setPadding] = useState<number>(3);
@@ -193,19 +198,31 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
           )}
         </div>
 
-        {/* Cleaning Action */}
+        {/* Bulk Actions */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Bulk Cleaning Tools
+            Bulk Actions
           </span>
-          <button
-            onClick={() => onCleanAllRegions(activeOptions)}
-            disabled={page.regions.length === 0 || page.isProcessing}
-            className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-          >
-            <Wand2 className="w-3.5 h-3.5" />
-            <span>Clean All Regions</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onCleanAllRegions(activeOptions)}
+              disabled={page.regions.length === 0 || page.isProcessing}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>Clean All</span>
+            </button>
+            {onTranslateAllRegions && (
+              <button
+                onClick={onTranslateAllRegions}
+                disabled={page.regions.length === 0 || page.isProcessing}
+                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <Languages className="w-3.5 h-3.5" />
+                <span>Translate All</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Cleaning Method Settings */}
@@ -297,7 +314,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
             {/* Region Text Content */}
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] text-slate-400 font-medium">Detected Text</label>
+                <label className="text-[11px] text-slate-400 font-medium">Original Text</label>
                 {onRunOcrOnRegion && (
                   <button
                     onClick={() => onRunOcrOnRegion(selectedRegion.id)}
@@ -316,6 +333,37 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                 onChange={(e) => onUpdateRegion({ ...selectedRegion, text: e.target.value })}
                 className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
                 placeholder="OCR Text output..."
+              />
+            </div>
+
+            {/* Translation Section */}
+            <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] text-slate-400 font-medium">Indonesian Translation</label>
+                {onTranslateRegion && (
+                  <button
+                    onClick={() => onTranslateRegion(selectedRegion.id)}
+                    disabled={page.isProcessing || !selectedRegion.text || !selectedRegion.text.trim()}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Translate text in this region to Indonesian"
+                  >
+                    <Languages className="w-3 h-3" />
+                    <span>Translate</span>
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={3}
+                value={selectedRegion.translatedText || ''}
+                onChange={(e) =>
+                  onUpdateRegion({
+                    ...selectedRegion,
+                    translatedText: e.target.value,
+                    translation: e.target.value, // keep backwards compatibility
+                  })
+                }
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                placeholder="Indonesian translation output..."
               />
             </div>
 
