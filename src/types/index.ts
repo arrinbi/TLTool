@@ -26,6 +26,7 @@ export interface TextRegion {
   isBrush?: boolean;
   brushPoints?: Array<{ x: number; y: number }>;
   brushSize?: number;
+  translatedText?: string;
   // Future module placeholders:
   translation?: string;
   typesetting?: {

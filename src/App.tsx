@@ -15,6 +15,7 @@ import { MainWorkspace } from './components/MainWorkspace';
 import { RegionInspector } from './components/RegionInspector';
 import { detectTextRegions, recognizeRegionText, createOcrWorker } from './modules/ocr/ocrService';
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
+import { translateRegion, translateAllRegions } from './modules/translation/translationService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
 
@@ -283,6 +284,60 @@ export function App() {
       );
     } catch (err) {
       console.error('Failed to recognize region text:', err);
+      setPages((prev) =>
+        prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
+      );
+    }
+  }, [selectedPage]);
+
+  // Translation Handlers
+  const handleTranslateRegion = useCallback(async (regionId: string) => {
+    if (!selectedPage) return;
+    const targetRegion = selectedPage.regions.find((r) => r.id === regionId);
+    if (!targetRegion || !targetRegion.text || !targetRegion.text.trim()) return;
+
+    setPages((prev) =>
+      prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true, processingMessage: 'Translating region...' } : p))
+    );
+
+    try {
+      const translated = await translateRegion(targetRegion);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPage.id) return p;
+          const updatedRegions = p.regions.map((r) =>
+            r.id === regionId
+              ? { ...r, translatedText: translated, translation: translated }
+              : r
+          );
+          return { ...p, regions: updatedRegions, isProcessing: false, processingMessage: undefined };
+        })
+      );
+    } catch (err) {
+      console.error('Failed to translate region:', err);
+      setPages((prev) =>
+        prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
+      );
+    }
+  }, [selectedPage]);
+
+  const handleTranslateAllRegions = useCallback(async () => {
+    if (!selectedPage || selectedPage.regions.length === 0) return;
+
+    setPages((prev) =>
+      prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: true, processingMessage: 'Translating all regions...' } : p))
+    );
+
+    try {
+      const updatedRegions = await translateAllRegions(selectedPage.regions);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPage.id) return p;
+          return { ...p, regions: updatedRegions, isProcessing: false, processingMessage: undefined };
+        })
+      );
+    } catch (err) {
+      console.error('Failed to translate all regions:', err);
       setPages((prev) =>
         prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
       );
@@ -728,6 +783,8 @@ export function App() {
           onCleanRegion={handleCleanRegion}
           onCleanAllRegions={handleCleanAllRegions}
           onRevertRegion={handleRevertRegion}
+          onTranslateRegion={handleTranslateRegion}
+          onTranslateAllRegions={handleTranslateAllRegions}
         />
       </div>
     </div>

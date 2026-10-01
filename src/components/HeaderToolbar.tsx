@@ -51,7 +51,7 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
       <nav className="hidden md:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
         {[
           { id: 'ocr-cleaning', label: '1. OCR & Cleaning', active: true },
-          { id: 'translation', label: '2. Translation (Soon)', active: false },
+          { id: 'translation', label: '2. Translation', active: true },
           { id: 'typesetting', label: '3. Typesetting (Soon)', active: false },
           { id: 'qc', label: '4. QC & Export (Soon)', active: false },
         ].map((stage) => (
