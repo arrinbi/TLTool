@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Sparkles,
   Eraser,
@@ -16,6 +16,7 @@ import {
   AlignCenter,
   AlignRight,
   RotateCcw,
+  Upload,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
@@ -24,6 +25,7 @@ import {
   getEffectiveTypesettingStyle,
   calculateAutoFontSize,
 } from '../modules/typesetting/typesettingService';
+import type { CustomFont, UploadFontResult } from '../modules/typesetting/fontService';
 
 interface RegionInspectorProps {
   page: ManhwaPage | null;
@@ -49,6 +51,12 @@ interface RegionInspectorProps {
   onTranslateAllRegions?: () => void;
   onTypesetAllRegions?: () => void;
   onClearTypesetting?: () => void;
+  customFonts?: CustomFont[];
+  defaultFontFamily?: string;
+  onChangeDefaultFontFamily?: (fontFamily: string) => void;
+  onUploadFontFile?: (file: File) => Promise<UploadFontResult | void>;
+  onRemoveCustomFont?: (fontId: string) => void;
+  fontUploadStatus?: { message: string; isError?: boolean } | null;
 }
 
 export const RegionInspector: React.FC<RegionInspectorProps> = ({
@@ -75,11 +83,18 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onTranslateAllRegions,
   onTypesetAllRegions,
   onClearTypesetting,
+  customFonts = [],
+  defaultFontFamily = 'sans-serif',
+  onChangeDefaultFontFamily,
+  onUploadFontFile,
+  onRemoveCustomFont,
+  fontUploadStatus,
 }) => {
   const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
   const [padding, setPadding] = useState<number>(3);
   const [fillColor, setFillColor] = useState<string>('#ffffff');
   const [showLimitationsModal, setShowLimitationsModal] = useState<boolean>(false);
+  const fontInputRef = useRef<HTMLInputElement>(null);
 
   if (!page) {
     return null;
@@ -95,14 +110,16 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
 
   // STAGE 3: TYPESETTING PANEL
   if (activeStage === 'typesetting') {
-    const currentStyle = selectedRegion ? getEffectiveTypesettingStyle(selectedRegion) : null;
+    const currentStyle = selectedRegion
+      ? getEffectiveTypesettingStyle(selectedRegion, defaultFontFamily)
+      : null;
 
     const handleAutoFitSelectedRegion = () => {
       if (!selectedRegion) return;
       const text = selectedRegion.translatedText || selectedRegion.translation || '';
       if (!text.trim()) return;
 
-      const style = getEffectiveTypesettingStyle(selectedRegion);
+      const style = getEffectiveTypesettingStyle(selectedRegion, defaultFontFamily);
       const autoFit = calculateAutoFontSize(selectedRegion, text, style);
 
       onUpdateRegion({
@@ -122,6 +139,16 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
       });
     };
 
+    const handleFontUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files && files.length > 0 && onUploadFontFile) {
+        await onUploadFontFile(files[0]);
+      }
+      if (fontInputRef.current) {
+        fontInputRef.current.value = '';
+      }
+    };
+
     return (
       <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
         {/* Header */}
@@ -133,6 +160,102 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
+          {/* Custom Fonts Management Section */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Custom Fonts
+              </span>
+              <input
+                ref={fontInputRef}
+                type="file"
+                accept=".ttf,.otf,.zip"
+                onChange={handleFontUploadChange}
+                className="hidden"
+                id="font-file-upload"
+              />
+              <button
+                type="button"
+                onClick={() => fontInputRef.current?.click()}
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload Font</span>
+              </button>
+            </div>
+
+            {/* Status Message */}
+            {fontUploadStatus && (
+              <div
+                className={`p-2 rounded-lg text-xs font-medium border flex items-center gap-1.5 ${
+                  fontUploadStatus.isError
+                    ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                }`}
+              >
+                <span>{fontUploadStatus.message}</span>
+              </div>
+            )}
+
+            {/* Default Font Family Dropdown */}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="global-default-font" className="text-[11px] text-slate-400 font-medium">
+                Global Default Font
+              </label>
+              <select
+                id="global-default-font"
+                value={defaultFontFamily}
+                onChange={(e) => onChangeDefaultFontFamily?.(e.target.value)}
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <optgroup label="System Fonts">
+                  {AVAILABLE_FONTS.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {customFonts.length > 0 && (
+                  <optgroup label="Custom Uploaded Fonts">
+                    {customFonts.map((font) => (
+                      <option key={font.id} value={font.familyName}>
+                        {font.displayName}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
+            {/* Registered Custom Fonts List */}
+            {customFonts.length > 0 && (
+              <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-slate-800/80">
+                <span className="text-[10px] text-slate-400 font-medium">Uploaded Custom Fonts ({customFonts.length})</span>
+                <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                  {customFonts.map((font) => (
+                    <div
+                      key={font.id}
+                      className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-between text-xs"
+                    >
+                      <div className="truncate flex-1 pr-2">
+                        <span className="font-medium text-slate-200 block truncate">{font.displayName}</span>
+                        <span className="text-[10px] text-slate-500 font-mono block truncate">{font.fileName}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveCustomFont?.(font.id)}
+                        className="p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded transition-colors cursor-pointer shrink-0"
+                        title="Remove custom font"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Bulk Actions for Typesetting */}
           <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -207,27 +330,42 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                 />
               </div>
 
-              {/* Font Family */}
+              {/* Font Family Dropdown for Selected Region */}
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-slate-400 font-medium">Font Family</label>
+                <label htmlFor="region-font-family" className="text-[11px] text-slate-400 font-medium">
+                  Font Family
+                </label>
                 <select
-                  value={currentStyle.fontFamily}
+                  id="region-font-family"
+                  value={selectedRegion.typesetting?.fontFamily ?? ''}
                   onChange={(e) =>
                     onUpdateRegion({
                       ...selectedRegion,
                       typesetting: {
                         ...selectedRegion.typesetting,
-                        fontFamily: e.target.value,
+                        fontFamily: e.target.value ? e.target.value : undefined,
                       },
                     })
                   }
                   className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
                 >
-                  {AVAILABLE_FONTS.map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
+                  <option value="">Use Default Font</option>
+                  <optgroup label="System Fonts">
+                    {AVAILABLE_FONTS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {customFonts.length > 0 && (
+                    <optgroup label="Custom Fonts">
+                      {customFonts.map((font) => (
+                        <option key={font.id} value={font.familyName}>
+                          {font.displayName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 
