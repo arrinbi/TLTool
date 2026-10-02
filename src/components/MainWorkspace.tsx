@@ -40,6 +40,7 @@ interface MainWorkspaceProps {
   onApplyCrop?: () => void;
   onCancelCrop?: () => void;
   onResetCropRect?: () => void;
+  defaultFontFamily?: string;
 }
 
 export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
@@ -68,6 +69,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
   onApplyCrop,
   onCancelCrop,
   onResetCropRect,
+  defaultFontFamily = 'sans-serif',
 }) => {
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('cleaned');
   const [zoom, setZoom] = useState<number>(1);
@@ -445,6 +447,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
                 manualTool={manualTool}
                 brushSize={brushSize}
                 manualCategory={manualCategory}
+                defaultFontFamily={defaultFontFamily}
               />
             )}
           </div>

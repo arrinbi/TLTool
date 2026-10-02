@@ -31,6 +31,8 @@ import {
   calculateAutoFontSize,
   getEffectiveTypesettingStyle,
 } from './modules/typesetting/typesettingService';
+import type { CustomFont } from './modules/typesetting/fontService';
+import { processFontUpload, unregisterCustomFont } from './modules/typesetting/fontService';
 
 export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
@@ -42,6 +44,11 @@ export function App() {
   const [brushSize, setBrushSize] = useState<number>(15);
   const [manualCategory, setManualCategory] = useState<RegionCategory>('bubble-oval');
   const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
+
+  // Custom Font Management State
+  const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
+  const [defaultFontFamily, setDefaultFontFamily] = useState<string>('sans-serif');
+  const [fontUploadStatus, setFontUploadStatus] = useState<{ message: string; isError?: boolean } | null>(null);
 
   // AI Provider Config State
   const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
@@ -64,6 +71,39 @@ export function App() {
     setAiConfig(newConfig);
     saveAiConfig(newConfig);
   }, []);
+
+  // Custom Font Upload & Cleanup Handlers
+  const handleUploadFontFile = useCallback(async (file: File) => {
+    const res = await processFontUpload(file, customFonts);
+    if (res.fonts.length > 0) {
+      setCustomFonts((prev) => [...prev, ...res.fonts]);
+    }
+    setFontUploadStatus({ message: res.statusMessage, isError: res.error });
+    return res;
+  }, [customFonts]);
+
+  const handleRemoveCustomFont = useCallback((fontId: string) => {
+    const targetFont = customFonts.find((f) => f.id === fontId);
+    if (!targetFont) return;
+
+    unregisterCustomFont(fontId);
+    setCustomFonts((prev) => prev.filter((f) => f.id !== fontId));
+
+    if (defaultFontFamily === targetFont.familyName) {
+      setDefaultFontFamily('sans-serif');
+    }
+
+    setPages((prevPages) =>
+      prevPages.map((p) => ({
+        ...p,
+        regions: p.regions.map((r) =>
+          r.typesetting?.fontFamily === targetFont.familyName
+            ? { ...r, typesetting: { ...r.typesetting, fontFamily: undefined } }
+            : r
+        ),
+      }))
+    );
+  }, [customFonts, defaultFontFamily]);
 
   // Load sample demo page if empty on start
   useEffect(() => {
@@ -712,7 +752,7 @@ export function App() {
           const text = region.translatedText || region.translation;
           if (!text || !text.trim()) return region;
 
-          const style = getEffectiveTypesettingStyle(region);
+          const style = getEffectiveTypesettingStyle(region, defaultFontFamily);
           const autoFit = calculateAutoFontSize(region, text, style);
 
           return {
@@ -731,7 +771,7 @@ export function App() {
         return { ...p, regions: updatedRegions };
       })
     );
-  }, [selectedPageId]);
+  }, [selectedPageId, defaultFontFamily]);
 
   const handleClearTypesetting = useCallback(() => {
     if (!selectedPageId) return;
@@ -750,7 +790,11 @@ export function App() {
   const handleExportTypesetImage = useCallback(async () => {
     if (!selectedPage) return;
     try {
-      const typesetDataUrl = await renderTypesetImage(selectedPage.cleanedUrl, selectedPage.regions);
+      const typesetDataUrl = await renderTypesetImage(
+        selectedPage.cleanedUrl,
+        selectedPage.regions,
+        defaultFontFamily
+      );
       const a = document.createElement('a');
       a.href = typesetDataUrl;
       a.download = `typeset_${selectedPage.name}`;
@@ -761,7 +805,7 @@ export function App() {
       console.error('Failed to export typeset image:', err);
       alert('Failed to export typeset image.');
     }
-  }, [selectedPage]);
+  }, [selectedPage, defaultFontFamily]);
 
   // Export handlers
   const handleExportCleanedImage = useCallback(() => {
@@ -873,6 +917,7 @@ export function App() {
           onApplyCrop={handleApplyCrop}
           onCancelCrop={handleCancelCrop}
           onResetCropRect={handleResetCropRect}
+          defaultFontFamily={defaultFontFamily}
         />
 
         {/* Sidebar Right: Region Inspector & Cleaning Options */}
@@ -906,6 +951,12 @@ export function App() {
           onTranslateAllRegions={handleTranslateAllRegions}
           onTypesetAllRegions={handleTypesetAllRegions}
           onClearTypesetting={handleClearTypesetting}
+          customFonts={customFonts}
+          defaultFontFamily={defaultFontFamily}
+          onChangeDefaultFontFamily={setDefaultFontFamily}
+          onUploadFontFile={handleUploadFontFile}
+          onRemoveCustomFont={handleRemoveCustomFont}
+          fontUploadStatus={fontUploadStatus}
         />
       </div>
 

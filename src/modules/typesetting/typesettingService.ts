@@ -1,4 +1,5 @@
 import type { TextRegion } from '../../types';
+import { ensureFontLoaded } from './fontService';
 
 export interface TypesettingStyle {
   x: number;
@@ -36,15 +37,19 @@ export const MAX_FONT_SIZE = 72;
 
 /**
  * Resolves the effective typesetting style for a given region,
- * applying region category defaults and user overrides.
+ * applying default font family fallback if no region-specific font is set.
  */
-export function getEffectiveTypesettingStyle(region: TextRegion): TypesettingStyle {
+export function getEffectiveTypesettingStyle(
+  region: TextRegion,
+  defaultFontFamily?: string
+): TypesettingStyle {
   const align = region.typesetting?.align ?? (region.category === 'text-outside' ? 'left' : 'center');
+  const fallbackFont = defaultFontFamily || DEFAULT_TYPESETTING_STYLE.fontFamily;
 
   return {
     x: region.typesetting?.x ?? 0,
     y: region.typesetting?.y ?? 0,
-    fontFamily: region.typesetting?.fontFamily ?? DEFAULT_TYPESETTING_STYLE.fontFamily,
+    fontFamily: region.typesetting?.fontFamily ?? fallbackFont,
     fontSize: region.typesetting?.fontSize ?? DEFAULT_TYPESETTING_STYLE.fontSize,
     fontWeight: region.typesetting?.fontWeight ?? DEFAULT_TYPESETTING_STYLE.fontWeight,
     color: region.typesetting?.color ?? DEFAULT_TYPESETTING_STYLE.color,
@@ -173,7 +178,8 @@ export function calculateAutoFontSize(
 export function renderRegionTypesetting(
   ctx: CanvasRenderingContext2D,
   region: TextRegion,
-  overrideStyle?: Partial<TypesettingStyle>
+  overrideStyle?: Partial<TypesettingStyle>,
+  defaultFontFamily?: string
 ): void {
   const textToRender = region.translatedText || region.translation;
   if (!textToRender || !textToRender.trim()) return;
@@ -181,7 +187,7 @@ export function renderRegionTypesetting(
   if (!region.bbox || region.bbox.width <= 0 || region.bbox.height <= 0) return;
 
   const style = {
-    ...getEffectiveTypesettingStyle(region),
+    ...getEffectiveTypesettingStyle(region, defaultFontFamily),
     ...overrideStyle,
   };
 
@@ -238,8 +244,17 @@ export function renderRegionTypesetting(
  */
 export async function renderTypesetImage(
   cleanedUrl: string,
-  regions: TextRegion[]
+  regions: TextRegion[],
+  defaultFontFamily?: string
 ): Promise<string> {
+  // Pre-load required custom fonts before canvas drawing
+  for (const region of regions) {
+    const style = getEffectiveTypesettingStyle(region, defaultFontFamily);
+    if (style.fontFamily) {
+      await ensureFontLoaded(style.fontFamily);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -265,7 +280,7 @@ export async function renderTypesetImage(
           if (!translatedText || !translatedText.trim()) continue;
           if (!region.bbox || region.bbox.width <= 0 || region.bbox.height <= 0) continue;
 
-          renderRegionTypesetting(ctx, region);
+          renderRegionTypesetting(ctx, region, undefined, defaultFontFamily);
         }
 
         resolve(canvas.toDataURL('image/png'));

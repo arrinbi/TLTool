@@ -28,6 +28,7 @@ interface RegionOverlayProps {
   manualTool?: ManualTool;
   brushSize?: number;
   manualCategory?: RegionCategory;
+  defaultFontFamily?: string;
 }
 
 export const RegionOverlay: React.FC<RegionOverlayProps> = ({
@@ -45,6 +46,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   manualTool = 'rectangle',
   brushSize = 15,
   manualCategory,
+  defaultFontFamily = 'sans-serif',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const typesettingCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,12 +85,12 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         const text = region.translatedText || region.translation;
         if (!text || !text.trim()) continue;
 
-        renderRegionTypesetting(ctx, region);
+        renderRegionTypesetting(ctx, region, undefined, defaultFontFamily);
       }
 
       ctx.restore();
     }
-  }, [activeStage, displayWidth, displayHeight, imageWidth, imageHeight, regions, scaleX, scaleY]);
+  }, [activeStage, displayWidth, displayHeight, imageWidth, imageHeight, regions, scaleX, scaleY, defaultFontFamily]);
 
   // Convert pointer event client coordinates directly into original image pixel coordinates
   const pointerToImage = (e: React.PointerEvent<HTMLDivElement>) => {

@@ -102,6 +102,13 @@ if (typeof HTMLCanvasElement !== 'undefined') {
 
       const mockCtxObj = {
         canvas,
+        save() {},
+        restore() {},
+        scale() {},
+        clearRect() {},
+        measureText(str: string) {
+          return { width: (str || '').length * 10 };
+        },
         get fillStyle() {
           return currentFillStyle;
         },
