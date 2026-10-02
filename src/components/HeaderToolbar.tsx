@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Undo2, Redo2, Languages, Image as ImageIcon, FileCode } from 'lucide-react';
+import { Download, Undo2, Redo2, Languages, Image as ImageIcon, FileCode, Settings } from 'lucide-react';
 import type { ManhwaPage, WorkflowStage } from '../types';
 
 interface HeaderToolbarProps {
@@ -14,6 +14,7 @@ interface HeaderToolbarProps {
   onExportCleanedImage: () => void;
   onExportAllPages: () => void;
   onExportProjectJson: () => void;
+  onOpenAiSettings?: () => void;
 }
 
 export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
@@ -28,6 +29,7 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
   onExportCleanedImage,
   onExportAllPages,
   onExportProjectJson,
+  onOpenAiSettings,
 }) => {
   return (
     <header className="h-16 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between gap-4 shrink-0 z-30">
@@ -93,6 +95,17 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
             <Redo2 className="w-4 h-4" />
           </button>
         </div>
+
+        {/* AI Provider Settings Button */}
+        {onOpenAiSettings && (
+          <button
+            onClick={onOpenAiSettings}
+            className="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition-colors cursor-pointer"
+            title="AI Provider Settings (Gemini & SumoPod)"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Export Options */}
         <div className="relative group">
