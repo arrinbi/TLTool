@@ -2,7 +2,11 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { TextRegion, BoundingBox, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import type { QcReport } from '../modules/qc/qcService';
 import { createBrushMask } from '../utils/brushUtils';
-import { renderRegionTypesetting } from '../modules/typesetting/typesettingService';
+import {
+  renderRegionTypesetting,
+  getEffectiveTypesettingBounds,
+  getRenderedTextDetails,
+} from '../modules/typesetting/typesettingService';
 import { AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface RegionOverlayProps {
@@ -61,10 +65,11 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
   const [brushPoints, setBrushPoints] = useState<Array<{ x: number; y: number }>>([]);
 
-  // Dragging state for Typesetting position adjustment
-  const [draggingRegionId, setDraggingRegionId] = useState<string | null>(null);
-  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
-  const [initialTypesetOffset, setInitialTypesetOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Dragging / Resizing state for Typesetting box adjustment
+  const [activeHandle, setActiveHandle] = useState<string | null>(null);
+  const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
+  const [dragStartImgPos, setDragStartImgPos] = useState<{ x: number; y: number } | null>(null);
+  const [initialBounds, setInitialBounds] = useState<BoundingBox | null>(null);
 
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
@@ -110,7 +115,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
 
     ctx.clearRect(0, 0, displayWidth, displayHeight);
 
-    if (activeStage === 'typesetting') {
+    if (activeStage === 'typesetting' || activeStage === 'qc') {
       ctx.save();
       ctx.scale(scaleX, scaleY);
 
@@ -168,28 +173,84 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
     if (!containerRef.current) return;
     const imgPos = pointerToImage(e);
 
-    if (draggingRegionId && dragStartPos) {
+    if (activeRegionId && activeHandle && dragStartImgPos && initialBounds) {
       if (dragRafId.current !== null) return;
 
-      const currentRegionId = draggingRegionId;
-      const currentDragStart = dragStartPos;
-      const currentInitialOffset = initialTypesetOffset;
+      const currentRegionId = activeRegionId;
+      const handle = activeHandle;
+      const startPos = dragStartImgPos;
+      const initB = initialBounds;
 
       dragRafId.current = requestAnimationFrame(() => {
         dragRafId.current = null;
         const targetRegion = regions.find((r) => r.id === currentRegionId);
-        if (targetRegion) {
-          const deltaX = imgPos.x - currentDragStart.x;
-          const deltaY = imgPos.y - currentDragStart.y;
-          onUpdateRegion({
-            ...targetRegion,
-            typesetting: {
-              ...targetRegion.typesetting,
-              x: currentInitialOffset.x + deltaX,
-              y: currentInitialOffset.y + deltaY,
-            },
-          });
+        if (!targetRegion) return;
+
+        const deltaX = imgPos.x - startPos.x;
+        const deltaY = imgPos.y - startPos.y;
+
+        let newX = initB.x;
+        let newY = initB.y;
+        let newW = initB.width;
+        let newH = initB.height;
+
+        if (handle === 'body') {
+          newX = initB.x + deltaX;
+          newY = initB.y + deltaY;
+
+          // Lightweight Snapping logic
+          const SNAP_THRESHOLD = 6;
+          const currentCenterX = newX + newW / 2;
+          const bboxCenterX = targetRegion.bbox.x + targetRegion.bbox.width / 2;
+          if (Math.abs(currentCenterX - bboxCenterX) < SNAP_THRESHOLD) {
+            newX = bboxCenterX - newW / 2;
+          } else {
+            const pageCenterX = imageWidth / 2;
+            if (Math.abs(currentCenterX - pageCenterX) < SNAP_THRESHOLD) {
+              newX = pageCenterX - newW / 2;
+            }
+          }
+
+          const currentCenterY = newY + newH / 2;
+          const bboxCenterY = targetRegion.bbox.y + targetRegion.bbox.height / 2;
+          if (Math.abs(currentCenterY - bboxCenterY) < SNAP_THRESHOLD) {
+            newY = bboxCenterY - newH / 2;
+          } else {
+            const pageCenterY = imageHeight / 2;
+            if (Math.abs(currentCenterY - pageCenterY) < SNAP_THRESHOLD) {
+              newY = pageCenterY - newH / 2;
+            }
+          }
+        } else {
+          // Handles: 'nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'
+          if (handle.includes('e')) {
+            newW = Math.max(15, initB.width + deltaX);
+          }
+          if (handle.includes('s')) {
+            newH = Math.max(15, initB.height + deltaY);
+          }
+          if (handle.includes('w')) {
+            newW = Math.max(15, initB.width - deltaX);
+            newX = initB.x + (initB.width - newW);
+          }
+          if (handle.includes('n')) {
+            newH = Math.max(15, initB.height - deltaY);
+            newY = initB.y + (initB.height - newH);
+          }
         }
+
+        onUpdateRegion({
+          ...targetRegion,
+          typesetting: {
+            ...targetRegion.typesetting,
+            bounds: {
+              x: Math.round(newX),
+              y: Math.round(newY),
+              width: Math.round(newW),
+              height: Math.round(newH),
+            },
+          },
+        });
       });
       return;
     }
@@ -203,11 +264,12 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
     }
   };
 
-  const handleTypesetPointerDown = (
+  const handleTypesetBoxPointerDown = (
     e: React.PointerEvent<HTMLDivElement>,
-    region: TextRegion
+    region: TextRegion,
+    handle: string = 'body'
   ) => {
-    if (activeStage !== 'typesetting') return;
+    if (activeStage !== 'typesetting' && activeStage !== 'qc') return;
     e.stopPropagation();
     onSelectRegion(region.id);
 
@@ -218,16 +280,15 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
     }
 
     const imgPos = pointerToImage(e);
-    setDraggingRegionId(region.id);
-    setDragStartPos(imgPos);
-    setInitialTypesetOffset({
-      x: region.typesetting?.x || 0,
-      y: region.typesetting?.y || 0,
-    });
+    const bounds = getEffectiveTypesettingBounds(region);
+    setActiveHandle(handle);
+    setActiveRegionId(region.id);
+    setDragStartImgPos(imgPos);
+    setInitialBounds(bounds);
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (draggingRegionId) {
+    if (activeRegionId) {
       try {
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
           e.currentTarget.releasePointerCapture(e.pointerId);
@@ -239,8 +300,10 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         cancelAnimationFrame(dragRafId.current);
         dragRafId.current = null;
       }
-      setDraggingRegionId(null);
-      setDragStartPos(null);
+      setActiveRegionId(null);
+      setActiveHandle(null);
+      setDragStartImgPos(null);
+      setInitialBounds(null);
     }
 
     if (isDrawing) {
@@ -316,12 +379,6 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   const uncleanedRegions = useMemo(() => regions.filter((region) => !region.isCleaned), [regions]);
   const brushRegions = useMemo(() => uncleanedRegions.filter((r) => r.isBrush || r.brushMask), [uncleanedRegions]);
   const rectRegions = useMemo(() => uncleanedRegions.filter((r) => !r.isBrush && !r.brushMask), [uncleanedRegions]);
-
-  const translatedRegions = useMemo(() => {
-    return regions.filter(
-      (r) => (r.translatedText && r.translatedText.trim()) || (r.translation && r.translation.trim())
-    );
-  }, [regions]);
 
   return (
     <div
@@ -414,42 +471,144 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
           );
         })}
 
-      {/* Typesetting Mode Region Outline Overlays & Drag Handles */}
-      {activeStage === 'typesetting' &&
-        translatedRegions.map((region) => {
+      {/* Typesetting & QC Mode Interactive Text Box Overlays with 8 Resize Handles */}
+      {(activeStage === 'typesetting' || activeStage === 'qc') &&
+        regions.map((region) => {
+          const bounds = getEffectiveTypesettingBounds(region);
+          const details = getRenderedTextDetails(region, undefined, defaultFontFamily);
           const isSelected = region.id === selectedRegionId;
-          const offsetX = (region.typesetting?.x || 0) * scaleX;
-          const offsetY = (region.typesetting?.y || 0) * scaleY;
-          const left = region.bbox.x * scaleX + offsetX;
-          const top = region.bbox.y * scaleY + offsetY;
-          const width = region.bbox.width * scaleX;
-          const height = region.bbox.height * scaleY;
+
+          const left = bounds.x * scaleX;
+          const top = bounds.y * scaleY;
+          const width = bounds.width * scaleX;
+          const height = bounds.height * scaleY;
+
+          const innerLeft = details.padding * scaleX;
+          const innerTop = details.padding * scaleY;
+          const innerWidth = Math.max(2, details.innerBounds.width * scaleX);
+          const innerHeight = Math.max(2, details.innerBounds.height * scaleY);
 
           return (
-            <div
-              key={`typeset-overlay-${region.id}`}
-              onPointerDown={(e) => handleTypesetPointerDown(e, region)}
-              style={{
-                position: 'absolute',
-                left: `${left}px`,
-                top: `${top}px`,
-                width: `${width}px`,
-                height: `${height}px`,
-              }}
-              className={`group rounded border transition-colors cursor-move z-20 ${
-                isSelected
-                  ? 'border-indigo-400 bg-indigo-500/10 ring-2 ring-indigo-400/60'
-                  : 'border-indigo-400/30 hover:border-indigo-400/70 hover:bg-indigo-500/5'
-              }`}
-            >
+            <React.Fragment key={`typeset-box-wrapper-${region.id}`}>
+              {/* Visual Alignment Guides (render for selected region) */}
+              {isSelected && (
+                <>
+                  {/* Vertical Guide Line through box/text center */}
+                  {details.isHorizontallyCentered && (
+                    <div
+                      style={{ left: `${details.boxCenter.x * scaleX}px` }}
+                      className="absolute top-0 bottom-0 border-r-2 border-dashed border-emerald-400 pointer-events-none z-30 shadow-sm"
+                    />
+                  )}
+                  {/* Horizontal Guide Line through box/text center */}
+                  {details.isVerticallyCentered && (
+                    <div
+                      style={{ top: `${details.boxCenter.y * scaleY}px` }}
+                      className="absolute left-0 right-0 border-b-2 border-dashed border-emerald-400 pointer-events-none z-30 shadow-sm"
+                    />
+                  )}
+                </>
+              )}
+
+              {/* Typesetting Box Container */}
               <div
-                className={`absolute -top-5 left-0 px-1 py-0.2 rounded text-[9px] font-semibold text-white shadow-sm flex items-center gap-1 ${
-                  isSelected ? 'bg-indigo-600' : 'bg-slate-700/80'
+                key={`typeset-box-${region.id}`}
+                onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'body')}
+                style={{
+                  position: 'absolute',
+                  left: `${left}px`,
+                  top: `${top}px`,
+                  width: `${width}px`,
+                  height: `${height}px`,
+                }}
+                className={`group rounded border-2 transition-colors cursor-move z-20 ${
+                  isSelected
+                    ? 'border-indigo-400 bg-indigo-500/10 ring-2 ring-indigo-400/60 shadow-xl'
+                    : 'border-indigo-400/40 hover:border-indigo-400/80 hover:bg-indigo-500/5'
                 }`}
               >
-                <span>#{region.id.slice(-4)}</span>
+                {/* Region Badge & Alignment Status */}
+                <div
+                  className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-md flex items-center gap-1.5 ${
+                    isSelected ? 'bg-indigo-600' : 'bg-slate-800/90'
+                  }`}
+                >
+                  <span>#{region.id.slice(-4)}</span>
+                  <span
+                    className={`text-[9px] px-1 rounded ${
+                      details.alignmentStatus === 'Centered'
+                        ? 'bg-emerald-500/30 text-emerald-300'
+                        : details.alignmentStatus === 'Almost centered'
+                        ? 'bg-amber-500/30 text-amber-300'
+                        : 'bg-slate-700 text-slate-300'
+                    }`}
+                  >
+                    {details.alignmentStatus}
+                  </span>
+                </div>
+
+                {/* Usable Inner Area (Padding Boundary) */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: `${innerLeft}px`,
+                    top: `${innerTop}px`,
+                    width: `${innerWidth}px`,
+                    height: `${innerHeight}px`,
+                  }}
+                  className="border border-dashed border-indigo-400/40 pointer-events-none rounded-sm"
+                />
+
+                {/* 8 Resize Handles (rendered when selected) */}
+                {isSelected && (
+                  <>
+                    {/* Corners */}
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'nw')}
+                      className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-nwse-resize z-30"
+                      title="Resize Top-Left"
+                    />
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'ne')}
+                      className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-nesw-resize z-30"
+                      title="Resize Top-Right"
+                    />
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'sw')}
+                      className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-nesw-resize z-30"
+                      title="Resize Bottom-Left"
+                    />
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'se')}
+                      className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-nwse-resize z-30"
+                      title="Resize Bottom-Right"
+                    />
+
+                    {/* Edges */}
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'n')}
+                      className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-ns-resize z-30"
+                      title="Resize Top"
+                    />
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 's')}
+                      className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-ns-resize z-30"
+                      title="Resize Bottom"
+                    />
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'w')}
+                      className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-ew-resize z-30"
+                      title="Resize Left"
+                    />
+                    <div
+                      onPointerDown={(e) => handleTypesetBoxPointerDown(e, region, 'e')}
+                      className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 bg-white border-2 border-indigo-600 rounded-sm cursor-ew-resize z-30"
+                      title="Resize Right"
+                    />
+                  </>
+                )}
               </div>
-            </div>
+            </React.Fragment>
           );
         })}
 
