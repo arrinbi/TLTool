@@ -12,12 +12,13 @@ import {
   Paintbrush,
   Languages,
 } from 'lucide-react';
-import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool } from '../types';
+import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
 
 interface RegionInspectorProps {
   page: ManhwaPage | null;
   selectedRegionId: string | null;
+  activeStage?: WorkflowStage;
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
   onDeleteRegion: (id: string) => void;
@@ -41,6 +42,7 @@ interface RegionInspectorProps {
 export const RegionInspector: React.FC<RegionInspectorProps> = ({
   page,
   selectedRegionId,
+  activeStage = 'ocr-cleaning',
   onSelectRegion,
   onUpdateRegion,
   onDeleteRegion,
@@ -77,6 +79,161 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     fillColor,
   };
 
+  // STAGE 2: TRANSLATION PANEL
+  if (activeStage === 'translation') {
+    return (
+      <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Languages className="w-5 h-5 text-indigo-400" />
+            <h2 className="font-semibold text-slate-100 text-sm">Translation Studio</h2>
+          </div>
+          {page.isProcessing && (
+            <span className="text-xs text-indigo-400 font-medium animate-pulse">
+              {page.processingMessage || 'Translating...'}
+            </span>
+          )}
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
+          {/* Bulk Actions for Translation */}
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Bulk Actions
+            </span>
+            {onTranslateAllRegions && (
+              <button
+                onClick={onTranslateAllRegions}
+                disabled={page.regions.length === 0 || page.isProcessing}
+                className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <Languages className="w-3.5 h-3.5" />
+                <span>Translate All</span>
+              </button>
+            )}
+          </div>
+
+          {/* Selected Region Editor */}
+          {selectedRegion ? (
+            <div className="bg-indigo-950/30 p-3.5 rounded-xl border border-indigo-500/40 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-indigo-300">
+                    Region #{selectedRegion.id.slice(-4)}
+                  </span>
+                  {selectedRegion.category && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium border border-slate-700">
+                      {selectedRegion.category}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => onDeleteRegion(selectedRegion.id)}
+                  className="p-1 hover:bg-red-500/20 hover:text-red-400 text-slate-400 rounded transition-colors cursor-pointer"
+                  title="Delete Region"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Read-Only Original Text */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400 font-medium">Original Text</label>
+                <textarea
+                  rows={3}
+                  readOnly
+                  value={selectedRegion.text || ''}
+                  className="bg-slate-950 border border-slate-800/80 text-slate-300 rounded-lg p-2 text-xs focus:outline-none cursor-not-allowed opacity-90"
+                  placeholder="OCR Text output..."
+                />
+              </div>
+
+              {/* Editable Translation */}
+              <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-slate-300 font-semibold">
+                    Indonesian Translation
+                  </label>
+                  {onTranslateRegion && (
+                    <button
+                      onClick={() => onTranslateRegion(selectedRegion.id)}
+                      disabled={page.isProcessing || !selectedRegion.text || !selectedRegion.text.trim()}
+                      className="text-[10px] bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 px-2 py-1 rounded border border-indigo-500/30 flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors"
+                      title="Translate text in this region to Indonesian"
+                    >
+                      <Languages className="w-3 h-3" />
+                      <span>Translate</span>
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  rows={3}
+                  value={selectedRegion.translatedText || ''}
+                  onChange={(e) =>
+                    onUpdateRegion({
+                      ...selectedRegion,
+                      translatedText: e.target.value,
+                      translation: e.target.value,
+                    })
+                  }
+                  className="bg-slate-900 border border-slate-800 text-slate-100 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                  placeholder="Indonesian translation output..."
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/80 text-center text-slate-400 text-xs">
+              Click any text box on the canvas to view and edit its translation.
+            </div>
+          )}
+
+          {/* Region Translation Progress / List */}
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Translation Regions ({page.regions.length})
+            </span>
+            <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
+              {page.regions.map((region) => {
+                const isSelected = region.id === selectedRegionId;
+                const hasTranslation = Boolean(region.translatedText && region.translatedText.trim());
+
+                return (
+                  <div
+                    key={region.id}
+                    onClick={() => onSelectRegion(region.id)}
+                    className={`p-2 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-950/40 text-slate-100'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="truncate flex-1 pr-2">
+                      <span className="font-mono text-[10px] text-slate-500 mr-1.5">
+                        #{region.id.slice(-4)}
+                      </span>
+                      <span>{region.translatedText || region.text || '(empty region)'}</span>
+                    </div>
+                    <span
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                        hasTranslation
+                          ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {hasTranslation ? 'Translated' : 'Untranslated'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
+  // STAGE 1: OCR & CLEANING PANEL (DEFAULT)
   return (
     <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
       {/* Header */}
@@ -203,26 +360,14 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
             Bulk Actions
           </span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => onCleanAllRegions(activeOptions)}
-              disabled={page.regions.length === 0 || page.isProcessing}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span>Clean All</span>
-            </button>
-            {onTranslateAllRegions && (
-              <button
-                onClick={onTranslateAllRegions}
-                disabled={page.regions.length === 0 || page.isProcessing}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-              >
-                <Languages className="w-3.5 h-3.5" />
-                <span>Translate All</span>
-              </button>
-            )}
-          </div>
+          <button
+            onClick={() => onCleanAllRegions(activeOptions)}
+            disabled={page.regions.length === 0 || page.isProcessing}
+            className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>Clean All</span>
+          </button>
         </div>
 
         {/* Cleaning Method Settings */}
@@ -333,37 +478,6 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                 onChange={(e) => onUpdateRegion({ ...selectedRegion, text: e.target.value })}
                 className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
                 placeholder="OCR Text output..."
-              />
-            </div>
-
-            {/* Translation Section */}
-            <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-slate-800/80">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] text-slate-400 font-medium">Indonesian Translation</label>
-                {onTranslateRegion && (
-                  <button
-                    onClick={() => onTranslateRegion(selectedRegion.id)}
-                    disabled={page.isProcessing || !selectedRegion.text || !selectedRegion.text.trim()}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                    title="Translate text in this region to Indonesian"
-                  >
-                    <Languages className="w-3 h-3" />
-                    <span>Translate</span>
-                  </button>
-                )}
-              </div>
-              <textarea
-                rows={3}
-                value={selectedRegion.translatedText || ''}
-                onChange={(e) =>
-                  onUpdateRegion({
-                    ...selectedRegion,
-                    translatedText: e.target.value,
-                    translation: e.target.value, // keep backwards compatibility
-                  })
-                }
-                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
-                placeholder="Indonesian translation output..."
               />
             </div>
 

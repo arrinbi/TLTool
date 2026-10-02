@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles, Square, Paintbrush, Crop, Check, X } from 'lucide-react';
-import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory, ManualTool, CropRect } from '../types';
+import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory, ManualTool, CropRect, WorkflowStage } from '../types';
 import { RegionOverlay } from './RegionOverlay';
 import { CropOverlay } from './CropOverlay';
 
 interface MainWorkspaceProps {
   page: ManhwaPage | null;
   selectedRegionId: string | null;
+  activeStage?: WorkflowStage;
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
   onAddRegion: (
@@ -44,6 +45,7 @@ interface MainWorkspaceProps {
 export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
   page,
   selectedRegionId,
+  activeStage = 'ocr-cleaning',
   onSelectRegion,
   onUpdateRegion,
   onAddRegion,
@@ -231,99 +233,103 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
             </div>
           )}
 
-          {/* Detection Mode Switcher */}
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-            <button
-              onClick={() => {
-                onSelectDetectionMode('auto');
-                onRunOcr();
-              }}
-              disabled={page.isProcessing}
-              className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
-                detectionMode === 'auto'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              } disabled:opacity-50`}
-              title="Automatic Detection (Run OCR)"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Automatic Detection</span>
-            </button>
-            <button
-              onClick={() => onSelectDetectionMode('manual')}
-              className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
-                detectionMode === 'manual'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-              title="Manual Selection (Draw Text Regions)"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Manual Selection</span>
-            </button>
-          </div>
-
-          {/* Tool & Category Selector when in Manual Selection Mode */}
-          {detectionMode === 'manual' && (
+          {/* Detection Mode Switcher & Manual Selection Tools (Stage 1 only) */}
+          {activeStage === 'ocr-cleaning' && (
             <>
-              {/* Manual Selection Tool Toggle: Rectangle vs Brush */}
-              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
                 <button
-                  onClick={() => onSelectManualTool?.('rectangle')}
-                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
-                    manualTool === 'rectangle'
+                  onClick={() => {
+                    onSelectDetectionMode('auto');
+                    onRunOcr();
+                  }}
+                  disabled={page.isProcessing}
+                  className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    detectionMode === 'auto'
                       ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                  title="Rectangle Selection Tool"
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  } disabled:opacity-50`}
+                  title="Automatic Detection (Run OCR)"
                 >
-                  <Square className="w-3.5 h-3.5" />
-                  <span>Rectangle</span>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Automatic Detection</span>
                 </button>
                 <button
-                  onClick={() => onSelectManualTool?.('brush')}
-                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
-                    manualTool === 'brush'
+                  onClick={() => onSelectDetectionMode('manual')}
+                  className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    detectionMode === 'manual'
                       ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                   }`}
-                  title="Brush Selection Tool"
+                  title="Manual Selection (Draw Text Regions)"
                 >
-                  <Paintbrush className="w-3.5 h-3.5" />
-                  <span>Brush</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Manual Selection</span>
                 </button>
               </div>
 
-              {/* Brush Size Slider when Brush mode active */}
-              {manualTool === 'brush' && (
-                <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-                  <span className="text-slate-400 text-[11px]">Size:</span>
-                  <input
-                    type="range"
-                    min="5"
-                    max="50"
-                    value={brushSize}
-                    onChange={(e) => onSelectBrushSize?.(Number(e.target.value))}
-                    className="w-16 accent-indigo-500 cursor-pointer"
-                  />
-                  <span className="text-slate-300 font-mono text-[10px] w-6">{brushSize}px</span>
-                </div>
+              {/* Tool & Category Selector when in Manual Selection Mode */}
+              {detectionMode === 'manual' && (
+                <>
+                  {/* Manual Selection Tool Toggle: Rectangle vs Brush */}
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+                    <button
+                      onClick={() => onSelectManualTool?.('rectangle')}
+                      className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                        manualTool === 'rectangle'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Rectangle Selection Tool"
+                    >
+                      <Square className="w-3.5 h-3.5" />
+                      <span>Rectangle</span>
+                    </button>
+                    <button
+                      onClick={() => onSelectManualTool?.('brush')}
+                      className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                        manualTool === 'brush'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Brush Selection Tool"
+                    >
+                      <Paintbrush className="w-3.5 h-3.5" />
+                      <span>Brush</span>
+                    </button>
+                  </div>
+
+                  {/* Brush Size Slider when Brush mode active */}
+                  {manualTool === 'brush' && (
+                    <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
+                      <span className="text-slate-400 text-[11px]">Size:</span>
+                      <input
+                        type="range"
+                        min="5"
+                        max="50"
+                        value={brushSize}
+                        onChange={(e) => onSelectBrushSize?.(Number(e.target.value))}
+                        className="w-16 accent-indigo-500 cursor-pointer"
+                      />
+                      <span className="text-slate-300 font-mono text-[10px] w-6">{brushSize}px</span>
+                    </div>
+                  )}
+
+                  {/* Category Selector */}
+                  <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
+                    <span className="text-slate-400 text-[11px]">Category:</span>
+                    <select
+                      value={manualCategory}
+                      onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
+                      className="bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="bubble-oval">Bubble Oval/Round</option>
+                      <option value="bubble-rect">Bubble Square/Box</option>
+                      <option value="text-outside">Floating Text (Outside Bubble)</option>
+                      <option value="sfx">SFX (Sound Effects)</option>
+                    </select>
+                  </div>
+                </>
               )}
-
-              {/* Category Selector */}
-              <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
-                <span className="text-slate-400 text-[11px]">Category:</span>
-                <select
-                  value={manualCategory}
-                  onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
-                  className="bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="bubble-oval">Bubble Oval/Round</option>
-                  <option value="bubble-rect">Bubble Square/Box</option>
-                  <option value="text-outside">Floating Text (Outside Bubble)</option>
-                  <option value="sfx">SFX (Sound Effects)</option>
-                </select>
-              </div>
             </>
           )}
 
