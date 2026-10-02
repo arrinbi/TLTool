@@ -130,8 +130,8 @@ describe('Quality Control (QC) Service & Workflow', () => {
       fireEvent.click(qcStageBtn);
 
       await waitFor(() => {
-        expect(screen.getByText('Typesetting QC & Alignment')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /Run Check|Re-run Check/ })).toBeInTheDocument();
+        expect(screen.getByText('Final Preview & Export')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Run Check|Re-check/ })).toBeInTheDocument();
       });
     });
 
@@ -148,7 +148,7 @@ describe('Quality Control (QC) Service & Workflow', () => {
         expect(screen.getByText('Technical Validation Check')).toBeInTheDocument();
       });
 
-      const runQcBtn = screen.getByRole('button', { name: /Run Check|Re-run Check/ });
+      const runQcBtn = screen.getByRole('button', { name: /Run Check|Re-check/ });
       fireEvent.click(runQcBtn);
 
       await waitFor(() => {
@@ -179,7 +179,7 @@ describe('Quality Control (QC) Service & Workflow', () => {
       fireEvent.click(screen.getByText('Cancel & Run QC'));
 
       await waitFor(() => {
-        expect(screen.getByText('Typesetting QC & Alignment')).toBeInTheDocument();
+        expect(screen.getByText('Final Preview & Export')).toBeInTheDocument();
       });
     });
   });

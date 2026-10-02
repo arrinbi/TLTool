@@ -18,9 +18,6 @@ import {
   RotateCcw,
   Upload,
   ShieldCheck,
-  CheckCircle2,
-  ArrowUp,
-  ArrowDown,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import type { QcReport, QcIssue } from '../modules/qc/qcService';
@@ -28,8 +25,6 @@ import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService
 import {
   AVAILABLE_FONTS,
   getEffectiveTypesettingStyle,
-  getEffectiveTypesettingBounds,
-  getRenderedTextDetails,
   calculateAutoFontSize,
 } from '../modules/typesetting/typesettingService';
 import type { CustomFont, UploadFontResult } from '../modules/typesetting/fontService';
@@ -65,7 +60,8 @@ interface RegionInspectorProps {
   onRemoveCustomFont?: (fontId: string) => void;
   fontUploadStatus?: { message: string; isError?: boolean } | null;
 
-  // QC Workspace Props
+  // QC & Export Workspace Props
+  pages?: ManhwaPage[];
   qcReport?: QcReport | null;
   onRunQc?: () => void;
   onNextIssue?: () => void;
@@ -73,10 +69,16 @@ interface RegionInspectorProps {
   currentIssueIndex?: number;
   selectedIssueId?: string | null;
   onSelectIssue?: (issue: QcIssue) => void;
+  onExportPdf?: () => void;
+  onExportZip?: () => void;
+  onExportSinglePagePdf?: () => void;
+  onExportSinglePagePng?: () => void;
+  onNavigateToStage?: (stage: WorkflowStage) => void;
 }
 
 export const RegionInspector: React.FC<RegionInspectorProps> = ({
   page,
+  pages: _pages,
   selectedRegionId,
   activeStage = 'ocr-cleaning',
   onSelectRegion,
@@ -112,6 +114,11 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   currentIssueIndex: _currentIssueIndex = -1,
   selectedIssueId,
   onSelectIssue,
+  onExportPdf,
+  onExportZip,
+  onExportSinglePagePdf,
+  onExportSinglePagePng,
+  onNavigateToStage,
 }) => {
   const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
   const [padding, setPadding] = useState<number>(3);
@@ -131,77 +138,11 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     fillColor,
   };
 
-  // STAGE 4: TYPESETTING QC / ALIGNMENT EDITOR PANEL
+  // STAGE 4: CLEAN FINAL PREVIEW & EXPORT PANEL
   if (activeStage === 'qc') {
     const summary = qcReport?.summary;
     const issues = qcReport?.issues || [];
     const hasReport = Boolean(qcReport);
-
-    const currentStyle = selectedRegion
-      ? getEffectiveTypesettingStyle(selectedRegion, defaultFontFamily)
-      : null;
-    const currentBounds = selectedRegion
-      ? getEffectiveTypesettingBounds(selectedRegion)
-      : null;
-    const currentDetails = selectedRegion
-      ? getRenderedTextDetails(selectedRegion, undefined, defaultFontFamily)
-      : null;
-
-    const handleFitBoxToRegion = () => {
-      if (!selectedRegion) return;
-      onUpdateRegion({
-        ...selectedRegion,
-        typesetting: {
-          ...selectedRegion.typesetting,
-          bounds: { ...selectedRegion.bbox },
-        },
-      });
-    };
-
-    const handleAutoFitSelectedRegionText = () => {
-      if (!selectedRegion) return;
-      const text = selectedRegion.translatedText || selectedRegion.translation || '';
-      if (!text.trim()) return;
-
-      const style = getEffectiveTypesettingStyle(selectedRegion, defaultFontFamily);
-      const autoFit = calculateAutoFontSize(selectedRegion, text, style);
-
-      onUpdateRegion({
-        ...selectedRegion,
-        typesetting: {
-          ...selectedRegion.typesetting,
-          fontSize: autoFit.fontSize,
-        },
-      });
-    };
-
-    const handleCenterBoth = () => {
-      if (!selectedRegion) return;
-      onUpdateRegion({
-        ...selectedRegion,
-        typesetting: {
-          ...selectedRegion.typesetting,
-          align: 'center',
-          vAlign: 'middle',
-        },
-      });
-    };
-
-    const handleResetBox = () => {
-      if (!selectedRegion) return;
-      onUpdateRegion({
-        ...selectedRegion,
-        typesetting: {
-          ...selectedRegion.typesetting,
-          bounds: undefined,
-          padding: undefined,
-          x: 0,
-          y: 0,
-          align: 'center',
-          vAlign: 'middle',
-        },
-      });
-    };
 
     return (
       <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
@@ -209,418 +150,125 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-indigo-400" />
-            <h2 className="font-semibold text-slate-100 text-sm">Typesetting QC & Alignment</h2>
+            <h2 className="font-semibold text-slate-100 text-sm">Final Preview & Export</h2>
           </div>
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
-          {/* Selected Region Selector */}
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Selected Region
-              </span>
-              {selectedRegion && (
-                <span className="font-mono text-xs font-bold text-indigo-400">
-                  #{selectedRegion.id.slice(-4)}
-                </span>
+          {/* EXPORT SECTION */}
+          <div className="bg-slate-950 p-4 rounded-xl border border-indigo-500/30 flex flex-col gap-3 shadow-lg">
+            <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <span>EXPORT</span>
+            </span>
+
+            <div className="flex flex-col gap-2">
+              {onExportPdf && (
+                <button
+                  type="button"
+                  onClick={onExportPdf}
+                  className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md"
+                >
+                  <span>Export All as PDF</span>
+                </button>
+              )}
+
+              {onExportZip && (
+                <button
+                  type="button"
+                  onClick={onExportZip}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md"
+                >
+                  <span>Export All as ZIP</span>
+                </button>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <select
-                value={selectedRegionId || ''}
-                onChange={(e) => onSelectRegion(e.target.value ? e.target.value : null)}
-                className="flex-1 bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="">Select a region to adjust...</option>
-                {page.regions.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    #{r.id.slice(-4)} - {r.translatedText || r.text || '(empty)'}
-                  </option>
-                ))}
-              </select>
+            {/* Single Page Export Quick Actions */}
+            <div className="pt-2 border-t border-slate-800 flex gap-2">
+              {onExportSinglePagePdf && (
+                <button
+                  type="button"
+                  onClick={onExportSinglePagePdf}
+                  className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center"
+                >
+                  Page PDF
+                </button>
+              )}
+              {onExportSinglePagePng && (
+                <button
+                  type="button"
+                  onClick={onExportSinglePagePng}
+                  className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center"
+                >
+                  Page PNG
+                </button>
+              )}
             </div>
           </div>
 
-          {selectedRegion && currentStyle && currentBounds && currentDetails ? (
-            <div className="bg-indigo-950/30 p-3.5 rounded-xl border border-indigo-500/40 flex flex-col gap-3.5">
-              {/* Alignment Status Banner */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                <span className="text-xs font-semibold text-slate-300">Alignment Status</span>
-                <span
-                  className={`text-xs font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 ${
-                    currentDetails.alignmentStatus === 'Centered'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : currentDetails.alignmentStatus === 'Almost centered'
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                      : 'bg-slate-800 text-slate-300 border-slate-700'
-                  }`}
-                >
-                  {currentDetails.alignmentStatus === 'Centered' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                  <span>{currentDetails.alignmentStatus}</span>
+          {/* VISUAL INSPECTION SUMMARY */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Visual Check Summary
+            </span>
+
+            <div className="text-xs text-slate-300 flex flex-col gap-1.5 bg-slate-900 p-3 rounded-lg border border-slate-800/80">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Current Page:</span>
+                <span className="font-semibold text-slate-100">{page.name}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Resolution:</span>
+                <span className="font-mono text-[11px] text-slate-300">{page.width} × {page.height} px</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Typeset Text Regions:</span>
+                <span className="font-semibold text-emerald-400">
+                  {page.regions.filter((r) => Boolean(r.translatedText || r.translation)).length} / {page.regions.length}
                 </span>
               </div>
-
-              {/* Editable Translation */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-slate-300 font-semibold">
-                  Translated Text
-                </label>
-                <textarea
-                  rows={2}
-                  value={selectedRegion.translatedText || selectedRegion.translation || ''}
-                  onChange={(e) =>
-                    onUpdateRegion({
-                      ...selectedRegion,
-                      translatedText: e.target.value,
-                      translation: e.target.value,
-                    })
-                  }
-                  className="bg-slate-900 border border-slate-800 text-slate-100 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
-                  placeholder="Translated text..."
-                />
-              </div>
-
-              {/* Layout Actions */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
-                  Layout Actions
-                </span>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleFitBoxToRegion}
-                    className="px-2 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center"
-                    title="Reset typesetting box to match OCR region bounding box"
-                  >
-                    Fit Box to Region
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAutoFitSelectedRegionText}
-                    className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center shadow-sm"
-                    title="Automatically fit text size inside typesetting box"
-                  >
-                    Auto Fit Text
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCenterBoth}
-                    className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-medium transition-colors cursor-pointer text-center shadow-sm"
-                    title="Center text horizontally and vertically in box"
-                  >
-                    Center Both
-                  </button>
-                </div>
-              </div>
-
-              {/* Horizontal & Vertical Alignment Controls */}
-              <div className="grid grid-cols-2 gap-2">
-                {/* Horizontal */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-slate-400 font-medium">Horizontal</label>
-                  <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, align: 'left' },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
-                        currentStyle.align === 'left' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Align Left"
-                    >
-                      <AlignLeft className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, align: 'center' },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
-                        currentStyle.align === 'center' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Center Horizontally"
-                    >
-                      <AlignCenter className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, align: 'right' },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
-                        currentStyle.align === 'right' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Align Right"
-                    >
-                      <AlignRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Vertical */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-slate-400 font-medium">Vertical</label>
-                  <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, vAlign: 'top' },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
-                        currentStyle.vAlign === 'top' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Align Top"
-                    >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, vAlign: 'middle' },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
-                        currentStyle.vAlign === 'middle' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Center Vertically"
-                    >
-                      <AlignCenter className="w-3.5 h-3.5 rotate-90" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, vAlign: 'bottom' },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
-                        currentStyle.vAlign === 'bottom' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Align Bottom"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Padding Control */}
-              <div className="flex flex-col gap-1">
-                <div className="flex justify-between text-[11px] text-slate-300 font-medium">
-                  <span>Box Padding ({currentStyle.padding}px)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="30"
-                    value={currentStyle.padding}
-                    onChange={(e) =>
-                      onUpdateRegion({
-                        ...selectedRegion,
-                        typesetting: {
-                          ...selectedRegion.typesetting,
-                          padding: Number(e.target.value),
-                        },
-                      })
-                    }
-                    className="flex-1 accent-indigo-500 cursor-pointer"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={currentStyle.padding}
-                    onChange={(e) =>
-                      onUpdateRegion({
-                        ...selectedRegion,
-                        typesetting: {
-                          ...selectedRegion.typesetting,
-                          padding: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                    className="w-14 bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Position & Size Inputs (Image Pixel Coordinates) */}
-              <div className="flex flex-col gap-1 pt-1 border-t border-slate-800">
-                <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
-                  <span>Position & Size (px)</span>
-                  <button
-                    type="button"
-                    onClick={handleResetBox}
-                    className="text-[10px] text-slate-400 hover:text-indigo-400 cursor-pointer flex items-center gap-1"
-                    title="Reset box to default"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Reset</span>
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800">
-                    <span className="text-slate-500 font-mono text-[10px]">X</span>
-                    <input
-                      type="number"
-                      value={currentBounds.x}
-                      onChange={(e) =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: {
-                            ...selectedRegion.typesetting,
-                            bounds: { ...currentBounds, x: Number(e.target.value) || 0 },
-                          },
-                        })
-                      }
-                      className="w-full bg-transparent text-slate-200 text-xs focus:outline-none font-mono"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800">
-                    <span className="text-slate-500 font-mono text-[10px]">Y</span>
-                    <input
-                      type="number"
-                      value={currentBounds.y}
-                      onChange={(e) =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: {
-                            ...selectedRegion.typesetting,
-                            bounds: { ...currentBounds, y: Number(e.target.value) || 0 },
-                          },
-                        })
-                      }
-                      className="w-full bg-transparent text-slate-200 text-xs focus:outline-none font-mono"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800">
-                    <span className="text-slate-500 font-mono text-[10px]">W</span>
-                    <input
-                      type="number"
-                      value={currentBounds.width}
-                      onChange={(e) =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: {
-                            ...selectedRegion.typesetting,
-                            bounds: { ...currentBounds, width: Math.max(10, Number(e.target.value) || 10) },
-                          },
-                        })
-                      }
-                      className="w-full bg-transparent text-slate-200 text-xs focus:outline-none font-mono"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-800">
-                    <span className="text-slate-500 font-mono text-[10px]">H</span>
-                    <input
-                      type="number"
-                      value={currentBounds.height}
-                      onChange={(e) =>
-                        onUpdateRegion({
-                          ...selectedRegion,
-                          typesetting: {
-                            ...selectedRegion.typesetting,
-                            bounds: { ...currentBounds, height: Math.max(10, Number(e.target.value) || 10) },
-                          },
-                        })
-                      }
-                      className="w-full bg-transparent text-slate-200 text-xs focus:outline-none font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Font Family & Size Quick Controls */}
-              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-slate-400 font-medium">Font Family</label>
-                  <select
-                    value={selectedRegion.typesetting?.fontFamily ?? ''}
-                    onChange={(e) =>
-                      onUpdateRegion({
-                        ...selectedRegion,
-                        typesetting: {
-                          ...selectedRegion.typesetting,
-                          fontFamily: e.target.value ? e.target.value : undefined,
-                        },
-                      })
-                    }
-                    className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="">Default Font</option>
-                    {AVAILABLE_FONTS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                    {customFonts.map((font) => (
-                      <option key={font.id} value={font.familyName}>
-                        {font.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-slate-400 font-medium">Font Size</label>
-                  <input
-                    type="number"
-                    min="8"
-                    max="72"
-                    value={currentStyle.fontSize}
-                    onChange={(e) =>
-                      onUpdateRegion({
-                        ...selectedRegion,
-                        typesetting: {
-                          ...selectedRegion.typesetting,
-                          fontSize: Number(e.target.value) || 12,
-                        },
-                      })
-                    }
-                    className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2 py-1 text-xs text-center focus:outline-none focus:border-indigo-500 font-mono"
-                  />
-                </div>
-              </div>
             </div>
-          ) : (
-            <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/80 text-center text-slate-400 text-xs">
-              Select a text region above or click on the canvas to visually adjust its typesetting box, padding, and text alignment.
-            </div>
-          )}
 
-          {/* Compact Technical QC Section */}
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+            <p className="text-[11px] text-slate-400 leading-relaxed bg-slate-900/50 p-2.5 rounded-lg border border-slate-800">
+              Inspect text placement and visual artwork quality before exporting. All editing overlays are hidden.
+            </p>
+          </div>
+
+          {/* EDITING GUIDANCE NOTICE */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-2">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Need Corrections?
+            </span>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              If text position or layout needs adjustments:
+            </p>
+            {onNavigateToStage && (
+              <button
+                type="button"
+                onClick={() => onNavigateToStage('typesetting')}
+                className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer mt-1"
+              >
+                <span>Return to Typesetting</span>
+              </button>
+            )}
+          </div>
+
+          {/* COMPACT TECHNICAL QC SUMMARY */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 Technical Validation Check
               </span>
-              <button
-                type="button"
-                onClick={onRunQc}
-                className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>{hasReport ? 'Re-run Check' : 'Run Check'}</span>
-              </button>
+              {onRunQc && (
+                <button
+                  type="button"
+                  onClick={onRunQc}
+                  className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>{hasReport ? 'Re-check' : 'Run Check'}</span>
+                </button>
+              )}
             </div>
 
             {summary && (

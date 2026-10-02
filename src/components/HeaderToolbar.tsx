@@ -14,6 +14,8 @@ interface HeaderToolbarProps {
   onExportCleanedImage: () => void;
   onExportTypesetImage?: () => void;
   onExportAllPages: () => void;
+  onExportAllPagesPdf?: () => void;
+  onExportAllPagesZip?: () => void;
   onExportProjectJson: () => void;
   onOpenAiSettings?: () => void;
 }
@@ -30,6 +32,8 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
   onExportCleanedImage,
   onExportTypesetImage,
   onExportAllPages,
+  onExportAllPagesPdf,
+  onExportAllPagesZip,
   onExportProjectJson,
   onOpenAiSettings,
 }) => {
@@ -141,12 +145,30 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
                   <span>Download Final Typeset PNG</span>
                 </button>
               )}
+              {onExportAllPagesPdf && (
+                <button
+                  onClick={onExportAllPagesPdf}
+                  className="px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer font-semibold text-indigo-300"
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Export All Pages as PDF</span>
+                </button>
+              )}
+              {onExportAllPagesZip && (
+                <button
+                  onClick={onExportAllPagesZip}
+                  className="px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer font-semibold text-emerald-300"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Export All Pages as ZIP</span>
+                </button>
+              )}
               <button
                 onClick={onExportAllPages}
-                className="px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                className="px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Download All Cleaned Pages</span>
+                <Download className="w-3.5 h-3.5 text-slate-400" />
+                <span>Download Raw Cleaned PNGs</span>
               </button>
               <button
                 onClick={onExportProjectJson}
