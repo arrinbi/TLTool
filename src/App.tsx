@@ -13,11 +13,19 @@ import { HeaderToolbar } from './components/HeaderToolbar';
 import { PageManager } from './components/PageManager';
 import { MainWorkspace } from './components/MainWorkspace';
 import { RegionInspector } from './components/RegionInspector';
-import { detectTextRegions, recognizeRegionText, createOcrWorker } from './modules/ocr/ocrService';
+import { AiSettingsModal } from './components/AiSettingsModal';
+import { detectTextRegions, createOcrWorker } from './modules/ocr/ocrService';
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
-import { translateRegion, translateAllRegions } from './modules/translation/translationService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
+
+import type { AiConfig } from './modules/ai/aiTypes';
+import { loadAiConfig, saveAiConfig } from './modules/ai/aiTypes';
+import {
+  recognizeText,
+  translateRegion as translateRegionAi,
+  translateAllRegions as translateAllRegionsAi,
+} from './modules/ai/aiService';
 
 export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
@@ -30,6 +38,10 @@ export function App() {
   const [manualCategory, setManualCategory] = useState<RegionCategory>('bubble-oval');
   const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
 
+  // AI Provider Config State
+  const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState<boolean>(false);
+
   // Crop Tool State
   const [isCropMode, setIsCropMode] = useState<boolean>(false);
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
@@ -41,6 +53,11 @@ export function App() {
     } else {
       setIsDrawingMode(false);
     }
+  }, []);
+
+  const handleSaveAiConfig = useCallback((newConfig: AiConfig) => {
+    setAiConfig(newConfig);
+    saveAiConfig(newConfig);
   }, []);
 
   // Load sample demo page if empty on start
@@ -90,8 +107,8 @@ export function App() {
               cleanedUrl: url,
               width: 600,
               height: 900,
-                originalWidth: 600,
-                originalHeight: 900,
+              originalWidth: 600,
+              originalHeight: 900,
               regions: [],
               history: [],
               historyIndex: -1,
@@ -188,10 +205,12 @@ export function App() {
 
       if (autoRegions.length > 0) {
         let worker: any = null;
-        try {
-          worker = await createOcrWorker();
-        } catch (wErr) {
-          console.warn('Could not pre-initialize Tesseract worker:', wErr);
+        if (aiConfig.ocrProvider === 'tesseract') {
+          try {
+            worker = await createOcrWorker();
+          } catch (wErr) {
+            console.warn('Could not pre-initialize Tesseract worker:', wErr);
+          }
         }
 
         try {
@@ -209,7 +228,10 @@ export function App() {
             );
 
             try {
-              const text = await recognizeRegionText(imageSource, region.bbox, worker);
+              const text = await recognizeText(
+                { imageSource, bbox: region.bbox },
+                aiConfig
+              );
               setPages((prev) =>
                 prev.map((p) => {
                   if (p.id !== pageId) return p;
@@ -274,7 +296,7 @@ export function App() {
 
     try {
       const imageSource = selectedPage.croppedUrl || selectedPage.originalUrl;
-      const text = await recognizeRegionText(imageSource, targetRegion.bbox);
+      const text = await recognizeText({ imageSource, bbox: targetRegion.bbox }, aiConfig);
       setPages((prev) =>
         prev.map((p) => {
           if (p.id !== selectedPage.id) return p;
@@ -284,11 +306,13 @@ export function App() {
       );
     } catch (err) {
       console.error('Failed to recognize region text:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(`OCR Error: ${errorMsg}`);
       setPages((prev) =>
         prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
       );
     }
-  }, [selectedPage]);
+  }, [selectedPage, aiConfig]);
 
   // Translation Handlers
   const handleTranslateRegion = useCallback(async (regionId: string) => {
@@ -301,7 +325,8 @@ export function App() {
     );
 
     try {
-      const translated = await translateRegion(targetRegion);
+      const imageSource = selectedPage.croppedUrl || selectedPage.originalUrl;
+      const translated = await translateRegionAi(targetRegion, imageSource, aiConfig);
       setPages((prev) =>
         prev.map((p) => {
           if (p.id !== selectedPage.id) return p;
@@ -321,7 +346,7 @@ export function App() {
         prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
       );
     }
-  }, [selectedPage]);
+  }, [selectedPage, aiConfig]);
 
   const handleTranslateAllRegions = useCallback(async () => {
     if (!selectedPage || selectedPage.regions.length === 0) return;
@@ -331,13 +356,33 @@ export function App() {
     );
 
     try {
-      const updatedRegions = await translateAllRegions(selectedPage.regions);
+      const imageSource = selectedPage.croppedUrl || selectedPage.originalUrl;
+      const batchResult = await translateAllRegionsAi(
+        selectedPage.regions,
+        imageSource,
+        aiConfig,
+        (completed, total) => {
+          setPages((prev) =>
+            prev.map((p) =>
+              p.id === selectedPage.id
+                ? { ...p, processingMessage: `Translating regions ${completed}/${total}...` }
+                : p
+            )
+          );
+        }
+      );
+
       setPages((prev) =>
         prev.map((p) => {
           if (p.id !== selectedPage.id) return p;
-          return { ...p, regions: updatedRegions, isProcessing: false, processingMessage: undefined };
+          return { ...p, regions: batchResult.updatedRegions, isProcessing: false, processingMessage: undefined };
         })
       );
+
+      if (batchResult.failedRegionIds.length > 0) {
+        const firstErr = Object.values(batchResult.errors)[0] || 'Unknown error';
+        alert(`Translation completed with warnings. ${batchResult.failedRegionIds.length} region(s) failed:\n${firstErr}`);
+      }
     } catch (err) {
       console.error('Failed to translate all regions:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -346,7 +391,7 @@ export function App() {
         prev.map((p) => (p.id === selectedPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
       );
     }
-  }, [selectedPage]);
+  }, [selectedPage, aiConfig]);
 
   // Region Operations
   const handleUpdateRegion = useCallback((updatedRegion: TextRegion) => {
@@ -406,7 +451,7 @@ export function App() {
 
       const imageSource = targetPage.croppedUrl || targetPage.originalUrl;
       try {
-        const text = await recognizeRegionText(imageSource, newRegion.bbox);
+        const text = await recognizeText({ imageSource, bbox: newRegion.bbox }, aiConfig);
         setPages((prev) =>
           prev.map((p) => {
             if (p.id !== pageId) return p;
@@ -431,7 +476,7 @@ export function App() {
         );
       }
     },
-    [selectedPageId, pages]
+    [selectedPageId, pages, aiConfig]
   );
 
   const handleDeleteRegion = useCallback((regionId: string) => {
@@ -714,6 +759,7 @@ export function App() {
         onExportCleanedImage={handleExportCleanedImage}
         onExportAllPages={handleExportAllPages}
         onExportProjectJson={handleExportProjectJson}
+        onOpenAiSettings={() => setIsAiSettingsOpen(true)}
       />
 
       {/* Main Studio Body */}
@@ -793,6 +839,14 @@ export function App() {
           onTranslateAllRegions={handleTranslateAllRegions}
         />
       </div>
+
+      {/* AI Settings Modal */}
+      <AiSettingsModal
+        isOpen={isAiSettingsOpen}
+        onClose={() => setIsAiSettingsOpen(false)}
+        config={aiConfig}
+        onSaveConfig={handleSaveAiConfig}
+      />
     </div>
   );
 }
