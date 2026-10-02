@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles, Square, Paintbrush, Crop, Check, X } from 'lucide-react';
 import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory, ManualTool, CropRect, WorkflowStage } from '../types';
+import type { QcReport } from '../modules/qc/qcService';
 import { RegionOverlay } from './RegionOverlay';
 import { CropOverlay } from './CropOverlay';
 
@@ -41,6 +42,7 @@ interface MainWorkspaceProps {
   onCancelCrop?: () => void;
   onResetCropRect?: () => void;
   defaultFontFamily?: string;
+  qcReport?: QcReport | null;
 }
 
 const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
@@ -70,6 +72,7 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
   onCancelCrop,
   onResetCropRect,
   defaultFontFamily = 'sans-serif',
+  qcReport,
 }) => {
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>('cleaned');
   const [zoom, setZoom] = useState<number>(1);
@@ -190,7 +193,7 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
         {/* Crop Tool & Mode Controls */}
         <div className="flex items-center gap-2">
           {/* Crop Mode Controls */}
-          {onToggleCropMode && (
+          {onToggleCropMode && activeStage === 'ocr-cleaning' && (
             <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
               <button
                 onClick={onToggleCropMode}
@@ -338,26 +341,28 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
           )}
 
           {/* Draw / Select Tool Toggle */}
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-            <button
-              onClick={() => setIsDrawingMode(false)}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                !isDrawingMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Select & Inspect Mode"
-            >
-              <MousePointer className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setIsDrawingMode(true)}
-              className={`p-1.5 rounded transition-colors cursor-pointer ${
-                isDrawingMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Draw New Text Box Tool"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {activeStage === 'ocr-cleaning' && (
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setIsDrawingMode(false)}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                  !isDrawingMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Select & Inspect Mode"
+              >
+                <MousePointer className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setIsDrawingMode(true)}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                  isDrawingMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Draw New Text Box Tool"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Zoom Level */}
           <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
@@ -457,6 +462,7 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
                 brushSize={brushSize}
                 manualCategory={manualCategory}
                 defaultFontFamily={defaultFontFamily}
+                qcReport={qcReport}
               />
             )}
           </div>
