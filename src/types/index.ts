@@ -32,11 +32,14 @@ export interface TextRegion {
   typesetting?: {
     x?: number;
     y?: number;
+    bounds?: BoundingBox;
+    padding?: number;
     fontFamily?: string;
     fontSize?: number;
     fontWeight?: number | string;
     color?: string;
     align?: 'left' | 'center' | 'right';
+    vAlign?: 'top' | 'middle' | 'bottom';
     lineHeight?: number;
   };
 }
