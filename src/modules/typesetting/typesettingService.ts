@@ -172,6 +172,78 @@ export function calculateAutoFontSize(
   return { fontSize: bestFontSize, lines: bestLines };
 }
 
+interface TypesettingLayoutCacheItem {
+  fontSize: number;
+  lines: string[];
+}
+
+const typesettingLayoutCache = new Map<string, TypesettingLayoutCacheItem>();
+const MAX_CACHE_SIZE = 500;
+
+export function clearTypesettingLayoutCache(): void {
+  typesettingLayoutCache.clear();
+}
+
+/**
+ * Computes or retrieves cached typesetting layout (fontSize and wrapped lines) for a region.
+ */
+export function getRegionTypesettingLayout(
+  region: TextRegion,
+  overrideStyle?: Partial<TypesettingStyle>,
+  defaultFontFamily?: string,
+  ctx?: CanvasRenderingContext2D | null
+): { fontSize: number; lines: string[] } {
+  const textToRender = region.translatedText || region.translation;
+  if (!textToRender || !textToRender.trim() || !region.bbox || region.bbox.width <= 0 || region.bbox.height <= 0) {
+    return { fontSize: 0, lines: [] };
+  }
+
+  const style = {
+    ...getEffectiveTypesettingStyle(region, defaultFontFamily),
+    ...overrideStyle,
+  };
+
+  const userFontSize = region.typesetting?.fontSize;
+
+  const cacheKey = [
+    textToRender,
+    region.bbox.width,
+    region.bbox.height,
+    style.fontFamily,
+    userFontSize || 'auto',
+    style.fontSize,
+    style.fontWeight,
+    style.lineHeight,
+    style.align,
+  ].join('|');
+
+  const cached = typesettingLayoutCache.get(cacheKey);
+  if (cached) {
+    return { fontSize: cached.fontSize, lines: cached.lines };
+  }
+
+  let fontSize = style.fontSize;
+  let lines: string[] = [];
+
+  if (!userFontSize) {
+    // Auto calculate if user hasn't explicitly set a custom font size
+    const autoFit = calculateAutoFontSize(region, textToRender, style, ctx);
+    fontSize = autoFit.fontSize;
+    lines = autoFit.lines;
+  } else {
+    const maxWidth = Math.max(10, region.bbox.width - 8);
+    lines = wrapText(textToRender, maxWidth, style.fontFamily, fontSize, style.fontWeight, ctx);
+  }
+
+  if (typesettingLayoutCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = typesettingLayoutCache.keys().next().value;
+    if (firstKey !== undefined) typesettingLayoutCache.delete(firstKey);
+  }
+
+  typesettingLayoutCache.set(cacheKey, { fontSize, lines });
+  return { fontSize, lines };
+}
+
 /**
  * Renders translated text for a region onto a Canvas 2D context.
  */
@@ -191,21 +263,9 @@ export function renderRegionTypesetting(
     ...overrideStyle,
   };
 
-  // Determine lines & font size
-  let fontSize = style.fontSize;
-  let lines: string[] = [];
+  const { fontSize, lines } = getRegionTypesettingLayout(region, overrideStyle, defaultFontFamily, ctx);
 
-  if (!region.typesetting?.fontSize) {
-    // Auto calculate if user hasn't explicitly set a custom font size
-    const autoFit = calculateAutoFontSize(region, textToRender, style, ctx);
-    fontSize = autoFit.fontSize;
-    lines = autoFit.lines;
-  } else {
-    const maxWidth = Math.max(10, region.bbox.width - 8);
-    lines = wrapText(textToRender, maxWidth, style.fontFamily, fontSize, style.fontWeight, ctx);
-  }
-
-  if (lines.length === 0) return;
+  if (lines.length === 0 || fontSize <= 0) return;
 
   ctx.save();
   ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
