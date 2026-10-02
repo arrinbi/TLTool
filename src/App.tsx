@@ -34,6 +34,10 @@ import {
 import type { CustomFont } from './modules/typesetting/fontService';
 import { processFontUpload, unregisterCustomFont } from './modules/typesetting/fontService';
 
+import type { QcReport, QcIssue } from './modules/qc/qcService';
+import { runQualityControl } from './modules/qc/qcService';
+import { ShieldCheck, AlertTriangle, AlertCircle, X, Download } from 'lucide-react';
+
 export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
@@ -57,6 +61,20 @@ export function App() {
   // Crop Tool State
   const [isCropMode, setIsCropMode] = useState<boolean>(false);
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
+
+  // QC State
+  const [qcReports, setQcReports] = useState<Record<string, QcReport>>({});
+  const [currentIssueIndex, setCurrentIssueIndex] = useState<number>(-1);
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+
+  // Export Safeguard Modal State
+  const [isExportSafeguardOpen, setIsExportSafeguardOpen] = useState<boolean>(false);
+  const [pendingExportCallback, setPendingExportCallback] = useState<(() => void) | null>(null);
+  const [exportSafeguardNotice, setExportSafeguardNotice] = useState<{
+    title: string;
+    body: string;
+    severity: 'error' | 'warning' | 'unrun';
+  } | null>(null);
 
   const handleSelectDetectionMode = useCallback((mode: 'auto' | 'manual') => {
     setDetectionMode(mode);
@@ -170,6 +188,67 @@ export function App() {
   }, []);
 
   const selectedPage = pages.find((p) => p.id === selectedPageId) || null;
+
+  // Run QC Analysis
+  const handleRunQc = useCallback(() => {
+    if (!selectedPage) return;
+    const report = runQualityControl(selectedPage, defaultFontFamily);
+    setQcReports((prev) => ({ ...prev, [selectedPage.id]: report }));
+
+    if (report.issues.length > 0) {
+      setCurrentIssueIndex(0);
+      setSelectedIssueId(report.issues[0].id);
+      setSelectedRegionId(report.issues[0].regionId);
+    } else {
+      setCurrentIssueIndex(-1);
+      setSelectedIssueId(null);
+    }
+  }, [selectedPage, defaultFontFamily]);
+
+  // Auto-run QC when entering QC stage if not already run
+  useEffect(() => {
+    if (activeStage === 'qc' && selectedPage && !qcReports[selectedPage.id]) {
+      handleRunQc();
+    }
+  }, [activeStage, selectedPage, qcReports, handleRunQc]);
+
+  // QC Navigation
+  const handleNextIssue = useCallback(() => {
+    if (!selectedPage) return;
+    const report = qcReports[selectedPage.id];
+    if (!report || report.issues.length === 0) return;
+
+    const nextIndex = (currentIssueIndex + 1) % report.issues.length;
+    const targetIssue = report.issues[nextIndex];
+
+    setCurrentIssueIndex(nextIndex);
+    setSelectedIssueId(targetIssue.id);
+    setSelectedRegionId(targetIssue.regionId);
+  }, [selectedPage, qcReports, currentIssueIndex]);
+
+  const handlePreviousIssue = useCallback(() => {
+    if (!selectedPage) return;
+    const report = qcReports[selectedPage.id];
+    if (!report || report.issues.length === 0) return;
+
+    const prevIndex = (currentIssueIndex - 1 + report.issues.length) % report.issues.length;
+    const targetIssue = report.issues[prevIndex];
+
+    setCurrentIssueIndex(prevIndex);
+    setSelectedIssueId(targetIssue.id);
+    setSelectedRegionId(targetIssue.regionId);
+  }, [selectedPage, qcReports, currentIssueIndex]);
+
+  const handleSelectIssue = useCallback((issue: QcIssue) => {
+    if (!selectedPage) return;
+    const report = qcReports[selectedPage.id];
+    if (!report) return;
+
+    const idx = report.issues.findIndex((i) => i.id === issue.id);
+    setCurrentIssueIndex(idx >= 0 ? idx : -1);
+    setSelectedIssueId(issue.id);
+    setSelectedRegionId(issue.regionId);
+  }, [selectedPage, qcReports]);
 
   // Handle uploading multiple image files preserving native resolution
   const handleUploadPages = useCallback(async (files: FileList | File[]) => {
@@ -787,7 +866,7 @@ export function App() {
     );
   }, [selectedPageId]);
 
-  const handleExportTypesetImage = useCallback(async () => {
+  const handleRawExportTypesetImage = useCallback(async () => {
     if (!selectedPage) return;
     try {
       const typesetDataUrl = await renderTypesetImage(
@@ -807,8 +886,8 @@ export function App() {
     }
   }, [selectedPage, defaultFontFamily]);
 
-  // Export handlers
-  const handleExportCleanedImage = useCallback(() => {
+  // Raw Export Handlers
+  const handleRawExportCleanedImage = useCallback(() => {
     if (!selectedPage) return;
     const a = document.createElement('a');
     a.href = selectedPage.cleanedUrl;
@@ -818,7 +897,7 @@ export function App() {
     document.body.removeChild(a);
   }, [selectedPage]);
 
-  const handleExportAllPages = useCallback(() => {
+  const handleRawExportAllPages = useCallback(() => {
     pages.forEach((p, idx) => {
       setTimeout(() => {
         const a = document.createElement('a');
@@ -831,7 +910,7 @@ export function App() {
     });
   }, [pages]);
 
-  const handleExportProjectJson = useCallback(() => {
+  const handleRawExportProjectJson = useCallback(() => {
     const projectData = {
       version: '1.0',
       exportedAt: new Date().toISOString(),
@@ -854,6 +933,41 @@ export function App() {
     document.body.removeChild(a);
   }, [pages]);
 
+  // Export Safeguard Evaluator
+  const executeWithExportSafeguard = useCallback((exportCallback: () => void) => {
+    if (!selectedPage) return;
+
+    const report = qcReports[selectedPage.id];
+
+    if (!report) {
+      setExportSafeguardNotice({
+        title: 'QC Analysis Not Run',
+        body: 'Quality Control (QC) analysis has not been run for this page yet. It is recommended to check page quality before exporting.',
+        severity: 'unrun',
+      });
+      setPendingExportCallback(() => exportCallback);
+      setIsExportSafeguardOpen(true);
+    } else if (report.summary.errors > 0) {
+      setExportSafeguardNotice({
+        title: 'QC Critical Errors Found',
+        body: `QC found ${report.summary.errors} critical error(s) and ${report.summary.warnings} warning(s) on this page.`,
+        severity: 'error',
+      });
+      setPendingExportCallback(() => exportCallback);
+      setIsExportSafeguardOpen(true);
+    } else if (report.summary.warnings > 0) {
+      setExportSafeguardNotice({
+        title: 'QC Warnings Found',
+        body: `QC found ${report.summary.warnings} warning(s) on this page.`,
+        severity: 'warning',
+      });
+      setPendingExportCallback(() => exportCallback);
+      setIsExportSafeguardOpen(true);
+    } else {
+      exportCallback();
+    }
+  }, [selectedPage, qcReports]);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100 select-none">
       {/* Header Bar */}
@@ -866,10 +980,10 @@ export function App() {
         onRedo={handleRedo}
         canUndo={canUndo}
         canRedo={canRedo}
-        onExportCleanedImage={handleExportCleanedImage}
-        onExportTypesetImage={handleExportTypesetImage}
-        onExportAllPages={handleExportAllPages}
-        onExportProjectJson={handleExportProjectJson}
+        onExportCleanedImage={() => executeWithExportSafeguard(handleRawExportCleanedImage)}
+        onExportTypesetImage={() => executeWithExportSafeguard(handleRawExportTypesetImage)}
+        onExportAllPages={() => executeWithExportSafeguard(handleRawExportAllPages)}
+        onExportProjectJson={() => executeWithExportSafeguard(handleRawExportProjectJson)}
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
       />
 
@@ -918,6 +1032,7 @@ export function App() {
           onCancelCrop={handleCancelCrop}
           onResetCropRect={handleResetCropRect}
           defaultFontFamily={defaultFontFamily}
+          qcReport={selectedPage ? qcReports[selectedPage.id] : null}
         />
 
         {/* Sidebar Right: Region Inspector & Cleaning Options */}
@@ -957,6 +1072,13 @@ export function App() {
           onUploadFontFile={handleUploadFontFile}
           onRemoveCustomFont={handleRemoveCustomFont}
           fontUploadStatus={fontUploadStatus}
+          qcReport={selectedPage ? qcReports[selectedPage.id] : null}
+          onRunQc={handleRunQc}
+          onNextIssue={handleNextIssue}
+          onPreviousIssue={handlePreviousIssue}
+          currentIssueIndex={currentIssueIndex}
+          selectedIssueId={selectedIssueId}
+          onSelectIssue={handleSelectIssue}
         />
       </div>
 
@@ -967,6 +1089,85 @@ export function App() {
         config={aiConfig}
         onSaveConfig={handleSaveAiConfig}
       />
+
+      {/* Export Safeguard Warning Modal */}
+      {isExportSafeguardOpen && exportSafeguardNotice && (
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 relative shadow-2xl flex flex-col gap-4">
+            <button
+              onClick={() => {
+                setIsExportSafeguardOpen(false);
+                setPendingExportCallback(null);
+              }}
+              className="absolute top-4 right-4 p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-3 rounded-xl border ${
+                  exportSafeguardNotice.severity === 'error'
+                    ? 'bg-red-500/20 border-red-500/40 text-red-400'
+                    : exportSafeguardNotice.severity === 'warning'
+                    ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                    : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'
+                }`}
+              >
+                {exportSafeguardNotice.severity === 'error' ? (
+                  <AlertCircle className="w-6 h-6" />
+                ) : exportSafeguardNotice.severity === 'warning' ? (
+                  <AlertTriangle className="w-6 h-6" />
+                ) : (
+                  <ShieldCheck className="w-6 h-6" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">{exportSafeguardNotice.title}</h3>
+                <p className="text-xs text-slate-400 mt-0.5 leading-snug">{exportSafeguardNotice.body}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3 rounded-xl border border-slate-800">
+              {exportSafeguardNotice.severity === 'error'
+                ? 'Critical QC errors should be resolved in Stage 4 to prevent corrupted output or missing translations.'
+                : exportSafeguardNotice.severity === 'warning'
+                ? 'QC warnings indicate potential formatting or cleaning flaws. You can review them in Stage 4 or proceed anyway.'
+                : 'QC analysis scans for missing translations, uncleaned text, and typesetting flaws.'}
+            </p>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExportSafeguardOpen(false);
+                  setPendingExportCallback(null);
+                  setActiveStage('qc');
+                  handleRunQc();
+                }}
+                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Cancel & Run QC</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExportSafeguardOpen(false);
+                  if (pendingExportCallback) {
+                    pendingExportCallback();
+                    setPendingExportCallback(null);
+                  }
+                }}
+                className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export Anyway</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

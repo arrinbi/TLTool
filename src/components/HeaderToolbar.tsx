@@ -57,7 +57,7 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
           { id: 'ocr-cleaning', label: '1. OCR & Cleaning', active: true },
           { id: 'translation', label: '2. Translation', active: true },
           { id: 'typesetting', label: '3. Typesetting', active: true },
-          { id: 'qc', label: '4. QC & Export (Soon)', active: false },
+          { id: 'qc', label: '4. QC & Export', active: true },
         ].map((stage) => (
           <button
             key={stage.id}

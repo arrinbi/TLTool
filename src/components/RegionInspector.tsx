@@ -17,8 +17,13 @@ import {
   AlignRight,
   RotateCcw,
   Upload,
+  ShieldCheck,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
+import type { QcReport, QcIssue } from '../modules/qc/qcService';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
 import {
   AVAILABLE_FONTS,
@@ -57,6 +62,15 @@ interface RegionInspectorProps {
   onUploadFontFile?: (file: File) => Promise<UploadFontResult | void>;
   onRemoveCustomFont?: (fontId: string) => void;
   fontUploadStatus?: { message: string; isError?: boolean } | null;
+
+  // QC Workspace Props
+  qcReport?: QcReport | null;
+  onRunQc?: () => void;
+  onNextIssue?: () => void;
+  onPreviousIssue?: () => void;
+  currentIssueIndex?: number;
+  selectedIssueId?: string | null;
+  onSelectIssue?: (issue: QcIssue) => void;
 }
 
 export const RegionInspector: React.FC<RegionInspectorProps> = ({
@@ -89,6 +103,13 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onUploadFontFile,
   onRemoveCustomFont,
   fontUploadStatus,
+  qcReport,
+  onRunQc,
+  onNextIssue,
+  onPreviousIssue,
+  currentIssueIndex = -1,
+  selectedIssueId,
+  onSelectIssue,
 }) => {
   const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
   const [padding, setPadding] = useState<number>(3);
@@ -107,6 +128,175 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     padding,
     fillColor,
   };
+
+  // STAGE 4: QC WORKSPACE PANEL
+  if (activeStage === 'qc') {
+    const summary = qcReport?.summary;
+    const issues = qcReport?.issues || [];
+    const hasReport = Boolean(qcReport);
+
+    return (
+      <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-indigo-400" />
+            <h2 className="font-semibold text-slate-100 text-sm">Quality Control (QC)</h2>
+          </div>
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
+          {/* Action Bar: Run QC, Next Issue, Prev Issue */}
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              QC Controls
+            </span>
+            <button
+              type="button"
+              onClick={onRunQc}
+              className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>{hasReport ? 'Re-run QC' : 'Run QC'}</span>
+            </button>
+
+            {hasReport && issues.length > 0 && (
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                <span className="text-xs text-slate-400 font-medium">
+                  Issue {currentIssueIndex >= 0 ? currentIssueIndex + 1 : 0} of {issues.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={onPreviousIssue}
+                    className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs transition-colors cursor-pointer"
+                    title="Go to previous issue"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onNextIssue}
+                    className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs transition-colors cursor-pointer"
+                    title="Go to next issue"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* QC Summary Metrics Grid */}
+          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-3">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              QC Summary
+            </span>
+
+            {summary ? (
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 flex flex-col">
+                  <span className="text-slate-400 text-[10px]">Total Regions</span>
+                  <span className="text-slate-100 font-bold text-sm">{summary.totalRegions}</span>
+                </div>
+                <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 flex flex-col">
+                  <span className="text-emerald-400 text-[10px]">Translated</span>
+                  <span className="text-emerald-300 font-bold text-sm">{summary.translated}</span>
+                </div>
+                <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 flex flex-col">
+                  <span className="text-amber-400 text-[10px]">Untranslated</span>
+                  <span className="text-amber-300 font-bold text-sm">{summary.untranslated}</span>
+                </div>
+                <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 flex flex-col">
+                  <span className="text-indigo-400 text-[10px]">Typeset</span>
+                  <span className="text-indigo-300 font-bold text-sm">{summary.typeset}</span>
+                </div>
+                <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 flex flex-col">
+                  <span className="text-slate-400 text-[10px]">Not Typeset</span>
+                  <span className="text-slate-300 font-bold text-sm">{summary.notTypeset}</span>
+                </div>
+                <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/30 flex flex-col">
+                  <span className="text-amber-400 text-[10px]">Warnings</span>
+                  <span className="text-amber-300 font-bold text-sm">{summary.warnings}</span>
+                </div>
+                <div className="col-span-2 p-2 bg-red-500/10 rounded-lg border border-red-500/30 flex flex-col">
+                  <span className="text-red-400 text-[10px]">Errors</span>
+                  <span className="text-red-300 font-bold text-sm">{summary.errors}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-2">
+                Click "Run QC" to scan page regions for translation, typesetting, and cleaning issues.
+              </p>
+            )}
+          </div>
+
+          {/* Issues List */}
+          {hasReport && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Detected Issues ({issues.length})
+                </span>
+              </div>
+
+              {issues.length === 0 ? (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center flex flex-col items-center gap-1.5">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  <span className="text-xs font-semibold text-emerald-300">All Quality Checks Passed!</span>
+                  <span className="text-[11px] text-emerald-400/80">No errors or warnings found on this page.</span>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {issues.map((issue, idx) => {
+                    const isSelected = selectedIssueId === issue.id || (currentIssueIndex === idx && Boolean(selectedIssueId));
+                    const isError = issue.severity === 'error';
+
+                    return (
+                      <div
+                        key={issue.id}
+                        onClick={() => onSelectIssue?.(issue)}
+                        className={`p-2.5 rounded-xl border text-xs flex flex-col gap-1.5 cursor-pointer transition-colors ${
+                          isSelected
+                            ? isError
+                              ? 'border-red-500 bg-red-950/40 text-slate-100 shadow-sm'
+                              : 'border-amber-500 bg-amber-950/40 text-slate-100 shadow-sm'
+                            : isError
+                            ? 'border-red-500/30 bg-slate-950/60 text-slate-300 hover:border-red-500/60'
+                            : 'border-amber-500/30 bg-slate-950/60 text-slate-300 hover:border-amber-500/60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight uppercase ${
+                                isError
+                                  ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                              }`}
+                            >
+                              {issue.severity}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700 uppercase">
+                              {issue.category}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-400">
+                            #{issue.regionId.slice(-4)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-200 leading-snug">{issue.message}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </aside>
+    );
+  }
 
   // STAGE 3: TYPESETTING PANEL
   if (activeStage === 'typesetting') {
