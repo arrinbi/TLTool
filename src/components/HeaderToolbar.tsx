@@ -12,6 +12,7 @@ interface HeaderToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   onExportCleanedImage: () => void;
+  onExportTypesetImage?: () => void;
   onExportAllPages: () => void;
   onExportProjectJson: () => void;
   onOpenAiSettings?: () => void;
@@ -27,6 +28,7 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
   canUndo,
   canRedo,
   onExportCleanedImage,
+  onExportTypesetImage,
   onExportAllPages,
   onExportProjectJson,
   onOpenAiSettings,
@@ -54,7 +56,7 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
         {[
           { id: 'ocr-cleaning', label: '1. OCR & Cleaning', active: true },
           { id: 'translation', label: '2. Translation', active: true },
-          { id: 'typesetting', label: '3. Typesetting (Soon)', active: false },
+          { id: 'typesetting', label: '3. Typesetting', active: true },
           { id: 'qc', label: '4. QC & Export (Soon)', active: false },
         ].map((stage) => (
           <button
@@ -127,8 +129,18 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
                 className="px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Download Current PNG (100% Res)</span>
+                <span>Download Cleaned PNG (100% Res)</span>
               </button>
+              {onExportTypesetImage && (
+                <button
+                  onClick={onExportTypesetImage}
+                  disabled={!selectedPage}
+                  className="px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Languages className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Download Final Typeset PNG</span>
+                </button>
+              )}
               <button
                 onClick={onExportAllPages}
                 className="px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"

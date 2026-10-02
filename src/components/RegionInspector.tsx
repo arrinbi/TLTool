@@ -11,9 +11,19 @@ import {
   Square,
   Paintbrush,
   Languages,
+  Type,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  RotateCcw,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
+import {
+  AVAILABLE_FONTS,
+  getEffectiveTypesettingStyle,
+  calculateAutoFontSize,
+} from '../modules/typesetting/typesettingService';
 
 interface RegionInspectorProps {
   page: ManhwaPage | null;
@@ -37,6 +47,8 @@ interface RegionInspectorProps {
   onRevertRegion: (regionId: string) => void;
   onTranslateRegion?: (regionId: string) => void;
   onTranslateAllRegions?: () => void;
+  onTypesetAllRegions?: () => void;
+  onClearTypesetting?: () => void;
 }
 
 export const RegionInspector: React.FC<RegionInspectorProps> = ({
@@ -61,6 +73,8 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onRevertRegion,
   onTranslateRegion,
   onTranslateAllRegions,
+  onTypesetAllRegions,
+  onClearTypesetting,
 }) => {
   const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
   const [padding, setPadding] = useState<number>(3);
@@ -78,6 +92,373 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     padding,
     fillColor,
   };
+
+  // STAGE 3: TYPESETTING PANEL
+  if (activeStage === 'typesetting') {
+    const currentStyle = selectedRegion ? getEffectiveTypesettingStyle(selectedRegion) : null;
+
+    const handleAutoFitSelectedRegion = () => {
+      if (!selectedRegion) return;
+      const text = selectedRegion.translatedText || selectedRegion.translation || '';
+      if (!text.trim()) return;
+
+      const style = getEffectiveTypesettingStyle(selectedRegion);
+      const autoFit = calculateAutoFontSize(selectedRegion, text, style);
+
+      onUpdateRegion({
+        ...selectedRegion,
+        typesetting: {
+          ...selectedRegion.typesetting,
+          fontSize: autoFit.fontSize,
+        },
+      });
+    };
+
+    const handleResetSelectedRegionStyle = () => {
+      if (!selectedRegion) return;
+      onUpdateRegion({
+        ...selectedRegion,
+        typesetting: undefined,
+      });
+    };
+
+    return (
+      <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Type className="w-5 h-5 text-indigo-400" />
+            <h2 className="font-semibold text-slate-100 text-sm">Typesetting Studio</h2>
+          </div>
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
+          {/* Bulk Actions for Typesetting */}
+          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Bulk Actions
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onTypesetAllRegions}
+                disabled={page.regions.length === 0}
+                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                title="Automatically typeset all regions with translated text"
+              >
+                <Type className="w-3.5 h-3.5" />
+                <span>Typeset All</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClearTypesetting}
+                disabled={page.regions.length === 0}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                title="Clear all typesetting previews"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Selected Region Typesetting Editor */}
+          {selectedRegion && currentStyle ? (
+            <div className="bg-indigo-950/30 p-3.5 rounded-xl border border-indigo-500/40 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-indigo-300">
+                    Region #{selectedRegion.id.slice(-4)}
+                  </span>
+                  {selectedRegion.category && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium border border-slate-700">
+                      {selectedRegion.category}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetSelectedRegionStyle}
+                  className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded transition-colors cursor-pointer flex items-center gap-1 text-[10px]"
+                  title="Reset Style to Default"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset</span>
+                </button>
+              </div>
+
+              {/* Editable Translation */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-300 font-semibold">
+                  Indonesian Translation
+                </label>
+                <textarea
+                  rows={2}
+                  value={selectedRegion.translatedText || selectedRegion.translation || ''}
+                  onChange={(e) =>
+                    onUpdateRegion({
+                      ...selectedRegion,
+                      translatedText: e.target.value,
+                      translation: e.target.value,
+                    })
+                  }
+                  className="bg-slate-900 border border-slate-800 text-slate-100 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                  placeholder="Enter translated text to typeset..."
+                />
+              </div>
+
+              {/* Font Family */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400 font-medium">Font Family</label>
+                <select
+                  value={currentStyle.fontFamily}
+                  onChange={(e) =>
+                    onUpdateRegion({
+                      ...selectedRegion,
+                      typesetting: {
+                        ...selectedRegion.typesetting,
+                        fontFamily: e.target.value,
+                      },
+                    })
+                  }
+                  className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  {AVAILABLE_FONTS.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Font Size & Auto Fit */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[11px] text-slate-300 font-medium">
+                  <span>Font Size ({currentStyle.fontSize}px)</span>
+                  <button
+                    type="button"
+                    onClick={handleAutoFitSelectedRegion}
+                    className="text-[10px] bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30 transition-colors cursor-pointer"
+                  >
+                    Auto Fit
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="8"
+                    max="60"
+                    value={currentStyle.fontSize}
+                    onChange={(e) =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          fontSize: Number(e.target.value),
+                        },
+                      })
+                    }
+                    className="flex-1 accent-indigo-500 cursor-pointer"
+                  />
+                  <input
+                    type="number"
+                    min="8"
+                    max="72"
+                    value={currentStyle.fontSize}
+                    onChange={(e) =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          fontSize: Number(e.target.value) || 12,
+                        },
+                      })
+                    }
+                    className="w-14 bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Alignment & Weight */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-slate-400 font-medium">Alignment</label>
+                  <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: { ...selectedRegion.typesetting, align: 'left' },
+                        })
+                      }
+                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
+                        currentStyle.align === 'left' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Align Left"
+                    >
+                      <AlignLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: { ...selectedRegion.typesetting, align: 'center' },
+                        })
+                      }
+                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
+                        currentStyle.align === 'center' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Align Center"
+                    >
+                      <AlignCenter className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: { ...selectedRegion.typesetting, align: 'right' },
+                        })
+                      }
+                      className={`flex-1 p-1 rounded flex justify-center cursor-pointer ${
+                        currentStyle.align === 'right' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Align Right"
+                    >
+                      <AlignRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-slate-400 font-medium">Font Weight</label>
+                  <select
+                    value={String(currentStyle.fontWeight)}
+                    onChange={(e) =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          fontWeight: e.target.value,
+                        },
+                      })
+                    }
+                    className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="bold">Bold</option>
+                    <option value="600">Semi-Bold</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Text Color & Line Height */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-slate-400 font-medium">Text Color</label>
+                  <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                    <input
+                      type="color"
+                      value={currentStyle.color}
+                      onChange={(e) =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: { ...selectedRegion.typesetting, color: e.target.value },
+                        })
+                      }
+                      className="w-6 h-6 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={currentStyle.color}
+                      onChange={(e) =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: { ...selectedRegion.typesetting, color: e.target.value },
+                        })
+                      }
+                      className="w-full bg-transparent text-slate-200 font-mono text-[10px] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between text-[11px] text-slate-400 font-medium">
+                    <span>Line Height</span>
+                    <span className="text-slate-300">{currentStyle.lineHeight}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="2"
+                    step="0.1"
+                    value={currentStyle.lineHeight}
+                    onChange={(e) =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          lineHeight: Number(e.target.value),
+                        },
+                      })
+                    }
+                    className="accent-indigo-500 cursor-pointer mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/80 text-center text-slate-400 text-xs">
+              Select a text box on the canvas to customize its typesetting properties.
+            </div>
+          )}
+
+          {/* Region Typesetting List */}
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              Typeset Regions ({page.regions.length})
+            </span>
+            <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
+              {page.regions.map((region) => {
+                const isSelected = region.id === selectedRegionId;
+                const hasTranslation = Boolean(region.translatedText && region.translatedText.trim());
+
+                return (
+                  <div
+                    key={region.id}
+                    onClick={() => onSelectRegion(region.id)}
+                    className={`p-2 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-950/40 text-slate-100'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="truncate flex-1 pr-2">
+                      <span className="font-mono text-[10px] text-slate-500 mr-1.5">
+                        #{region.id.slice(-4)}
+                      </span>
+                      <span>{region.translatedText || region.text || '(empty region)'}</span>
+                    </div>
+                    <span
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                        hasTranslation
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      {hasTranslation ? 'Ready' : 'Untranslated'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </aside>
+    );
+  }
 
   // STAGE 2: TRANSLATION PANEL
   if (activeStage === 'translation') {

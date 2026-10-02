@@ -436,6 +436,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
                 displayHeight={renderedHeight}
                 regions={page.regions}
                 selectedRegionId={selectedRegionId}
+                activeStage={activeStage}
                 onSelectRegion={onSelectRegion}
                 onUpdateRegion={onUpdateRegion}
                 onAddRegion={onAddRegion}

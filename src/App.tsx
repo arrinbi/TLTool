@@ -26,6 +26,11 @@ import {
   translateRegion as translateRegionAi,
   translateAllRegions as translateAllRegionsAi,
 } from './modules/ai/aiService';
+import {
+  renderTypesetImage,
+  calculateAutoFontSize,
+  getEffectiveTypesettingStyle,
+} from './modules/typesetting/typesettingService';
 
 export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
@@ -697,6 +702,67 @@ export function App() {
     }
   }, [selectedPage, cropRect]);
 
+  // Typesetting Handlers
+  const handleTypesetAllRegions = useCallback(() => {
+    if (!selectedPageId) return;
+    setPages((prev) =>
+      prev.map((p) => {
+        if (p.id !== selectedPageId) return p;
+        const updatedRegions = p.regions.map((region) => {
+          const text = region.translatedText || region.translation;
+          if (!text || !text.trim()) return region;
+
+          const style = getEffectiveTypesettingStyle(region);
+          const autoFit = calculateAutoFontSize(region, text, style);
+
+          return {
+            ...region,
+            typesetting: {
+              ...region.typesetting,
+              fontFamily: style.fontFamily,
+              fontSize: autoFit.fontSize,
+              color: style.color,
+              align: style.align,
+              lineHeight: style.lineHeight,
+              fontWeight: style.fontWeight,
+            },
+          };
+        });
+        return { ...p, regions: updatedRegions };
+      })
+    );
+  }, [selectedPageId]);
+
+  const handleClearTypesetting = useCallback(() => {
+    if (!selectedPageId) return;
+    setPages((prev) =>
+      prev.map((p) => {
+        if (p.id !== selectedPageId) return p;
+        const updatedRegions = p.regions.map((region) => ({
+          ...region,
+          typesetting: undefined,
+        }));
+        return { ...p, regions: updatedRegions };
+      })
+    );
+  }, [selectedPageId]);
+
+  const handleExportTypesetImage = useCallback(async () => {
+    if (!selectedPage) return;
+    try {
+      const typesetDataUrl = await renderTypesetImage(selectedPage.cleanedUrl, selectedPage.regions);
+      const a = document.createElement('a');
+      a.href = typesetDataUrl;
+      a.download = `typeset_${selectedPage.name}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Failed to export typeset image:', err);
+      alert('Failed to export typeset image.');
+    }
+  }, [selectedPage]);
+
   // Export handlers
   const handleExportCleanedImage = useCallback(() => {
     if (!selectedPage) return;
@@ -757,6 +823,7 @@ export function App() {
         canUndo={canUndo}
         canRedo={canRedo}
         onExportCleanedImage={handleExportCleanedImage}
+        onExportTypesetImage={handleExportTypesetImage}
         onExportAllPages={handleExportAllPages}
         onExportProjectJson={handleExportProjectJson}
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
@@ -837,6 +904,8 @@ export function App() {
           onRevertRegion={handleRevertRegion}
           onTranslateRegion={handleTranslateRegion}
           onTranslateAllRegions={handleTranslateAllRegions}
+          onTypesetAllRegions={handleTypesetAllRegions}
+          onClearTypesetting={handleClearTypesetting}
         />
       </div>
 

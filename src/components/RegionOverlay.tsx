@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
-import type { TextRegion, BoundingBox, RegionCategory, ManualTool } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import type { TextRegion, BoundingBox, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import { createBrushMask } from '../utils/brushUtils';
+import { renderRegionTypesetting } from '../modules/typesetting/typesettingService';
 
 interface RegionOverlayProps {
   imageWidth: number;
@@ -9,6 +10,7 @@ interface RegionOverlayProps {
   displayHeight: number;
   regions: TextRegion[];
   selectedRegionId: string | null;
+  activeStage?: WorkflowStage;
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
   onAddRegion: (
@@ -35,7 +37,9 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   displayHeight,
   regions,
   selectedRegionId,
+  activeStage = 'ocr-cleaning',
   onSelectRegion,
+  onUpdateRegion,
   onAddRegion,
   isDrawingMode,
   manualTool = 'rectangle',
@@ -43,13 +47,48 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   manualCategory,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const typesettingCanvasRef = useRef<HTMLCanvasElement>(null);
+
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
   const [brushPoints, setBrushPoints] = useState<Array<{ x: number; y: number }>>([]);
 
+  // Dragging state for Typesetting position adjustment
+  const [draggingRegionId, setDraggingRegionId] = useState<string | null>(null);
+  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [initialTypesetOffset, setInitialTypesetOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
+
+  // Render Typesetting Canvas Overlay
+  useEffect(() => {
+    const canvas = typesettingCanvasRef.current;
+    if (!canvas || !displayWidth || !displayHeight) return;
+
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+    if (activeStage === 'typesetting') {
+      ctx.save();
+      ctx.scale(scaleX, scaleY);
+
+      for (const region of regions) {
+        const text = region.translatedText || region.translation;
+        if (!text || !text.trim()) continue;
+
+        renderRegionTypesetting(ctx, region);
+      }
+
+      ctx.restore();
+    }
+  }, [activeStage, displayWidth, displayHeight, imageWidth, imageHeight, regions, scaleX, scaleY]);
 
   // Convert pointer event client coordinates directly into original image pixel coordinates
   const pointerToImage = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -91,8 +130,27 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawing || !containerRef.current) return;
+    if (!containerRef.current) return;
     const imgPos = pointerToImage(e);
+
+    if (draggingRegionId && dragStartPos) {
+      const targetRegion = regions.find((r) => r.id === draggingRegionId);
+      if (targetRegion) {
+        const deltaX = imgPos.x - dragStartPos.x;
+        const deltaY = imgPos.y - dragStartPos.y;
+        onUpdateRegion({
+          ...targetRegion,
+          typesetting: {
+            ...targetRegion.typesetting,
+            x: initialTypesetOffset.x + deltaX,
+            y: initialTypesetOffset.y + deltaY,
+          },
+        });
+      }
+      return;
+    }
+
+    if (!isDrawing) return;
 
     if (manualTool === 'brush') {
       setBrushPoints((prev) => [...prev, imgPos]);
@@ -101,7 +159,42 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     }
   };
 
+  const handleTypesetPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    region: TextRegion
+  ) => {
+    if (activeStage !== 'typesetting') return;
+    e.stopPropagation();
+    onSelectRegion(region.id);
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
+
+    const imgPos = pointerToImage(e);
+    setDraggingRegionId(region.id);
+    setDragStartPos(imgPos);
+    setInitialTypesetOffset({
+      x: region.typesetting?.x || 0,
+      y: region.typesetting?.y || 0,
+    });
+  };
+
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingRegionId) {
+      try {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Ignore
+      }
+      setDraggingRegionId(null);
+      setDragStartPos(null);
+    }
+
     if (isDrawing) {
       try {
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -176,6 +269,10 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const brushRegions = uncleanedRegions.filter((r) => r.isBrush || r.brushMask);
   const rectRegions = uncleanedRegions.filter((r) => !r.isBrush && !r.brushMask);
 
+  const translatedRegions = regions.filter(
+    (r) => (r.translatedText && r.translatedText.trim()) || (r.translation && r.translation.trim())
+  );
+
   return (
     <div
       ref={containerRef}
@@ -188,52 +285,101 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
       onPointerCancel={handlePointerCancel}
       style={{ width: displayWidth, height: displayHeight, touchAction: isDrawingMode ? 'none' : 'auto' }}
     >
-      {/* Rectangle Mode Regions */}
-      {rectRegions.map((region) => {
-        const isSelected = region.id === selectedRegionId;
-        const left = region.bbox.x * scaleX;
-        const top = region.bbox.y * scaleY;
-        const width = region.bbox.width * scaleX;
-        const height = region.bbox.height * scaleY;
+      {/* Non-Destructive Typesetting Canvas Overlay */}
+      {activeStage === 'typesetting' && (
+        <canvas
+          ref={typesettingCanvasRef}
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{ width: displayWidth, height: displayHeight }}
+        />
+      )}
 
-        return (
-          <div
-            key={region.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectRegion(region.id);
-            }}
-            style={{
-              position: 'absolute',
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-            className={`group rounded border-2 transition-colors cursor-pointer ${
-              isSelected
-                ? 'border-indigo-400 bg-indigo-500/25 ring-2 ring-indigo-400/50'
-                : 'border-amber-400/80 bg-amber-400/15 hover:border-amber-300'
-            }`}
-          >
-            {/* Tag / Status label */}
+      {/* Typesetting Mode Region Outline Overlays & Drag Handles */}
+      {activeStage === 'typesetting' &&
+        translatedRegions.map((region) => {
+          const isSelected = region.id === selectedRegionId;
+          const offsetX = (region.typesetting?.x || 0) * scaleX;
+          const offsetY = (region.typesetting?.y || 0) * scaleY;
+          const left = region.bbox.x * scaleX + offsetX;
+          const top = region.bbox.y * scaleY + offsetY;
+          const width = region.bbox.width * scaleX;
+          const height = region.bbox.height * scaleY;
+
+          return (
             <div
-              className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white shadow-sm flex items-center gap-1 ${
+              key={`typeset-overlay-${region.id}`}
+              onPointerDown={(e) => handleTypesetPointerDown(e, region)}
+              style={{
+                position: 'absolute',
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+              className={`group rounded border transition-colors cursor-move z-20 ${
                 isSelected
-                  ? 'bg-indigo-600'
-                  : region.isManual || region.source === 'manual'
-                  ? 'bg-amber-600'
-                  : 'bg-slate-700'
+                  ? 'border-indigo-400 bg-indigo-500/10 ring-2 ring-indigo-400/60'
+                  : 'border-indigo-400/30 hover:border-indigo-400/70 hover:bg-indigo-500/5'
               }`}
             >
-              <span>{region.isManual || region.source === 'manual' ? 'Manual' : 'Text'}</span>
+              <div
+                className={`absolute -top-5 left-0 px-1 py-0.2 rounded text-[9px] font-semibold text-white shadow-sm flex items-center gap-1 ${
+                  isSelected ? 'bg-indigo-600' : 'bg-slate-700/80'
+                }`}
+              >
+                <span>#{region.id.slice(-4)}</span>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+
+      {/* Rectangle Mode Regions (Stage 1 / Stage 2) */}
+      {activeStage !== 'typesetting' &&
+        rectRegions.map((region) => {
+          const isSelected = region.id === selectedRegionId;
+          const left = region.bbox.x * scaleX;
+          const top = region.bbox.y * scaleY;
+          const width = region.bbox.width * scaleX;
+          const height = region.bbox.height * scaleY;
+
+          return (
+            <div
+              key={region.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectRegion(region.id);
+              }}
+              style={{
+                position: 'absolute',
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+              className={`group rounded border-2 transition-colors cursor-pointer ${
+                isSelected
+                  ? 'border-indigo-400 bg-indigo-500/25 ring-2 ring-indigo-400/50'
+                  : 'border-amber-400/80 bg-amber-400/15 hover:border-amber-300'
+              }`}
+            >
+              {/* Tag / Status label */}
+              <div
+                className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white shadow-sm flex items-center gap-1 ${
+                  isSelected
+                    ? 'bg-indigo-600'
+                    : region.isManual || region.source === 'manual'
+                    ? 'bg-amber-600'
+                    : 'bg-slate-700'
+                }`}
+              >
+                <span>{region.isManual || region.source === 'manual' ? 'Manual' : 'Text'}</span>
+              </div>
+            </div>
+          );
+        })}
 
       {/* SVG Overlay for Brush Mask Regions */}
-      {brushRegions.length > 0 && (
+      {activeStage !== 'typesetting' && brushRegions.length > 0 && (
         <svg
           className="absolute inset-0 pointer-events-none z-10"
           style={{ width: displayWidth, height: displayHeight }}

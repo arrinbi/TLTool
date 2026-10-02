@@ -30,10 +30,14 @@ export interface TextRegion {
   // Future module placeholders:
   translation?: string;
   typesetting?: {
+    x?: number;
+    y?: number;
     fontFamily?: string;
     fontSize?: number;
+    fontWeight?: number | string;
     color?: string;
     align?: 'left' | 'center' | 'right';
+    lineHeight?: number;
   };
 }
 
