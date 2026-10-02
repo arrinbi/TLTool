@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { TextRegion, BoundingBox, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import { createBrushMask } from '../utils/brushUtils';
 import { renderRegionTypesetting } from '../modules/typesetting/typesettingService';
@@ -31,7 +31,7 @@ interface RegionOverlayProps {
   defaultFontFamily?: string;
 }
 
-export const RegionOverlay: React.FC<RegionOverlayProps> = ({
+const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   imageWidth,
   imageHeight,
   displayWidth,
@@ -50,6 +50,7 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const typesettingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const dragRafId = useRef<number | null>(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -64,13 +65,25 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
 
+  useEffect(() => {
+    return () => {
+      if (dragRafId.current !== null) {
+        cancelAnimationFrame(dragRafId.current);
+      }
+    };
+  }, []);
+
   // Render Typesetting Canvas Overlay
   useEffect(() => {
     const canvas = typesettingCanvasRef.current;
     if (!canvas || !displayWidth || !displayHeight) return;
 
-    canvas.width = displayWidth;
-    canvas.height = displayHeight;
+    if (canvas.width !== displayWidth) {
+      canvas.width = displayWidth;
+    }
+    if (canvas.height !== displayHeight) {
+      canvas.height = displayHeight;
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -136,19 +149,28 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     const imgPos = pointerToImage(e);
 
     if (draggingRegionId && dragStartPos) {
-      const targetRegion = regions.find((r) => r.id === draggingRegionId);
-      if (targetRegion) {
-        const deltaX = imgPos.x - dragStartPos.x;
-        const deltaY = imgPos.y - dragStartPos.y;
-        onUpdateRegion({
-          ...targetRegion,
-          typesetting: {
-            ...targetRegion.typesetting,
-            x: initialTypesetOffset.x + deltaX,
-            y: initialTypesetOffset.y + deltaY,
-          },
-        });
-      }
+      if (dragRafId.current !== null) return;
+
+      const currentRegionId = draggingRegionId;
+      const currentDragStart = dragStartPos;
+      const currentInitialOffset = initialTypesetOffset;
+
+      dragRafId.current = requestAnimationFrame(() => {
+        dragRafId.current = null;
+        const targetRegion = regions.find((r) => r.id === currentRegionId);
+        if (targetRegion) {
+          const deltaX = imgPos.x - currentDragStart.x;
+          const deltaY = imgPos.y - currentDragStart.y;
+          onUpdateRegion({
+            ...targetRegion,
+            typesetting: {
+              ...targetRegion.typesetting,
+              x: currentInitialOffset.x + deltaX,
+              y: currentInitialOffset.y + deltaY,
+            },
+          });
+        }
+      });
       return;
     }
 
@@ -192,6 +214,10 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
         }
       } catch {
         // Ignore
+      }
+      if (dragRafId.current !== null) {
+        cancelAnimationFrame(dragRafId.current);
+        dragRafId.current = null;
       }
       setDraggingRegionId(null);
       setDragStartPos(null);
@@ -267,13 +293,15 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     setBrushPoints([]);
   };
 
-  const uncleanedRegions = regions.filter((region) => !region.isCleaned);
-  const brushRegions = uncleanedRegions.filter((r) => r.isBrush || r.brushMask);
-  const rectRegions = uncleanedRegions.filter((r) => !r.isBrush && !r.brushMask);
+  const uncleanedRegions = useMemo(() => regions.filter((region) => !region.isCleaned), [regions]);
+  const brushRegions = useMemo(() => uncleanedRegions.filter((r) => r.isBrush || r.brushMask), [uncleanedRegions]);
+  const rectRegions = useMemo(() => uncleanedRegions.filter((r) => !r.isBrush && !r.brushMask), [uncleanedRegions]);
 
-  const translatedRegions = regions.filter(
-    (r) => (r.translatedText && r.translatedText.trim()) || (r.translation && r.translation.trim())
-  );
+  const translatedRegions = useMemo(() => {
+    return regions.filter(
+      (r) => (r.translatedText && r.translatedText.trim()) || (r.translation && r.translation.trim())
+    );
+  }, [regions]);
 
   return (
     <div
@@ -285,14 +313,25 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      style={{ width: displayWidth, height: displayHeight, touchAction: isDrawingMode ? 'none' : 'auto' }}
+      style={{
+        width: displayWidth,
+        height: displayHeight,
+        touchAction: isDrawingMode ? 'none' : 'auto',
+        willChange: 'transform',
+        transform: 'translateZ(0)',
+      }}
     >
       {/* Non-Destructive Typesetting Canvas Overlay */}
       {activeStage === 'typesetting' && (
         <canvas
           ref={typesettingCanvasRef}
           className="absolute inset-0 pointer-events-none z-10"
-          style={{ width: displayWidth, height: displayHeight }}
+          style={{
+            width: displayWidth,
+            height: displayHeight,
+            willChange: 'transform',
+            transform: 'translateZ(0)',
+          }}
         />
       )}
 
@@ -518,3 +557,5 @@ export const RegionOverlay: React.FC<RegionOverlayProps> = ({
     </div>
   );
 };
+
+export const RegionOverlay = React.memo(RegionOverlayComponent);

@@ -43,7 +43,7 @@ interface MainWorkspaceProps {
   defaultFontFamily?: string;
 }
 
-export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
+const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
   page,
   selectedRegionId,
   activeStage = 'ocr-cleaning',
@@ -90,9 +90,11 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
   useEffect(() => {
     const updateDimensions = () => {
       if (imageRef.current && imageRef.current.naturalWidth) {
-        setDisplaySize({
-          width: imageRef.current.naturalWidth,
-          height: imageRef.current.naturalHeight,
+        const nw = imageRef.current.naturalWidth;
+        const nh = imageRef.current.naturalHeight;
+        setDisplaySize((prev) => {
+          if (prev.width === nw && prev.height === nh) return prev;
+          return { width: nw, height: nh };
         });
       }
     };
@@ -100,10 +102,10 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
     return () => window.removeEventListener('resize', updateDimensions);
-  }, [page, viewMode]);
+  }, [page?.id, page?.cleanedUrl, page?.originalUrl, viewMode]);
 
   const handleSplitMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDraggingSplit.current) return;
+    if (viewMode !== 'split-slider' || !isDraggingSplit.current) return;
     const targetRef = splitSliderRef.current || workspaceRef.current;
     if (!targetRef) return;
     const rect = targetRef.getBoundingClientRect();
@@ -397,7 +399,12 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
         {/* Single Image Views (Cleaned or Original) */}
         {(viewMode === 'cleaned' || viewMode === 'original') && (
           <div
-            style={{ width: `${renderedWidth}px`, height: `${renderedHeight}px` }}
+            style={{
+              width: `${renderedWidth}px`,
+              height: `${renderedHeight}px`,
+              willChange: 'transform',
+              transform: 'translateZ(0)',
+            }}
             className="relative mx-auto border border-slate-800 rounded shadow-2xl overflow-hidden bg-slate-900 shrink-0"
           >
             <img
@@ -407,9 +414,11 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
               onLoad={(e) => {
                 const img = e.currentTarget;
                 if (img.naturalWidth && img.naturalHeight) {
-                  setDisplaySize({
-                    width: img.naturalWidth,
-                    height: img.naturalHeight,
+                  const nw = img.naturalWidth;
+                  const nh = img.naturalHeight;
+                  setDisplaySize((prev) => {
+                    if (prev.width === nw && prev.height === nh) return prev;
+                    return { width: nw, height: nh };
                   });
                 }
               }}
@@ -531,3 +540,5 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({
     </main>
   );
 };
+
+export const MainWorkspace = React.memo(MainWorkspaceComponent);
