@@ -1,6 +1,7 @@
 import { render, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { RegionOverlay } from '../RegionOverlay';
+import type { TextRegion } from '../../types';
 
 describe('RegionOverlay manual selection coordinate mapping', () => {
   it('correctly maps pointer coordinates to source image coordinates at normal scale', () => {
@@ -523,5 +524,246 @@ describe('RegionOverlay manual selection coordinate mapping', () => {
 
     const updatedBoxes = container.querySelectorAll('.border-2');
     expect(updatedBoxes.length).toBe(2);
+  });
+});
+
+describe('Typesetting text-box interaction and selection behavior', () => {
+  const sampleRegion1: TextRegion = {
+    id: 'region-1001',
+    bbox: { x: 100, y: 100, width: 200, height: 100 },
+    text: 'Original 1',
+    translatedText: 'Halo Dunia!',
+    confidence: 100,
+    isCleaned: true,
+    typesetting: {
+      bounds: { x: 100, y: 100, width: 200, height: 100 },
+      fontSize: 18,
+    },
+  };
+
+  const sampleRegion2: TextRegion = {
+    id: 'region-1002',
+    bbox: { x: 400, y: 300, width: 200, height: 100 },
+    text: 'Original 2',
+    translatedText: 'Selamat Pagi!',
+    confidence: 100,
+    isCleaned: true,
+    typesetting: {
+      bounds: { x: 400, y: 300, width: 200, height: 100 },
+      fontSize: 16,
+    },
+  };
+
+  it('1. shows transform box and 8 handles when a text object is selected', () => {
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1, sampleRegion2]}
+        selectedRegionId="region-1001"
+        activeStage="typesetting"
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    // Bounding box border and shadow should be rendered for selected region
+    const selectedBox = container.querySelector('.border-indigo-400');
+    expect(selectedBox).not.toBeNull();
+
+    // Region badge (#1001) should be visible
+    expect(container.textContent).toContain('#1001');
+
+    // 8 resize handles should be present
+    const handles = container.querySelectorAll('.cursor-nwse-resize, .cursor-nesw-resize, .cursor-ns-resize, .cursor-ew-resize');
+    expect(handles.length).toBe(8);
+  });
+
+  it('2. deselects when clicking outside, hiding transform box and handles while typeset text remains rendered', () => {
+    const onSelectRegion = vi.fn();
+    const { container, rerender } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1, sampleRegion2]}
+        selectedRegionId="region-1001"
+        activeStage="typesetting"
+        onSelectRegion={onSelectRegion}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+
+    // Click on canvas background (empty area)
+    fireEvent.pointerDown(overlayEl, { clientX: 10, clientY: 10, pointerId: 1 });
+
+    expect(onSelectRegion).toHaveBeenCalledWith(null);
+
+    // Rerender with selectedRegionId = null
+    rerender(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1, sampleRegion2]}
+        selectedRegionId={null}
+        activeStage="typesetting"
+        onSelectRegion={onSelectRegion}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    // Transform box border, handles, and badge should be hidden
+    expect(container.querySelector('.border-indigo-400')).toBeNull();
+    expect(container.querySelectorAll('.cursor-nwse-resize').length).toBe(0);
+    expect(container.textContent).not.toContain('#1001');
+
+    // Canvas element remains present for rendering text
+    const canvas = container.querySelector('canvas');
+    expect(canvas).not.toBeNull();
+  });
+
+  it('3. selects again when clicking directly on existing typeset text box', () => {
+    const onSelectRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1, sampleRegion2]}
+        selectedRegionId={null}
+        activeStage="typesetting"
+        onSelectRegion={onSelectRegion}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    // Find transparent interactive box for sampleRegion1 (at left: 100px, top: 100px, width: 200px, height: 100px)
+    const boxes = container.querySelectorAll('.cursor-pointer.z-20');
+    expect(boxes.length).toBe(2);
+
+    // Click first region box
+    fireEvent.pointerDown(boxes[0], { clientX: 150, clientY: 150, pointerId: 1 });
+
+    expect(onSelectRegion).toHaveBeenCalledWith('region-1001');
+  });
+
+  it('4. switches selection correctly when clicking another text object', () => {
+    const onSelectRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1, sampleRegion2]}
+        selectedRegionId="region-1001"
+        activeStage="typesetting"
+        onSelectRegion={onSelectRegion}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    // Find the second region box (sampleRegion2)
+    const boxes = container.querySelectorAll('.z-20');
+    expect(boxes.length).toBe(2);
+
+    // Click sampleRegion2
+    fireEvent.pointerDown(boxes[1], { clientX: 450, clientY: 350, pointerId: 1 });
+
+    expect(onSelectRegion).toHaveBeenCalledWith('region-1002');
+  });
+
+  it('5. renders live font size indicator near active handle during transform resize', () => {
+    const onUpdateRegion = vi.fn();
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1]}
+        selectedRegionId="region-1001"
+        activeStage="typesetting"
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={onUpdateRegion}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    const overlayEl = container.firstChild as HTMLDivElement;
+    vi.spyOn(overlayEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 1000,
+      height: 1000,
+      right: 1000,
+      bottom: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Grab Bottom-Right handle ('se')
+    const seHandle = container.querySelector('div[title="Resize Bottom-Right"]');
+    expect(seHandle).not.toBeNull();
+
+    fireEvent.pointerDown(seHandle!, { clientX: 300, clientY: 200, pointerId: 1 });
+
+    // While dragging/resizing, font size indicator showing font size (e.g. "18 px") should be rendered
+    expect(container.textContent).toMatch(/\d+\s*px/);
+
+    // Release handle
+    fireEvent.pointerUp(overlayEl, { clientX: 350, clientY: 250, pointerId: 1 });
+
+    // Font size indicator disappears after pointer up
+    expect(container.textContent).not.toMatch(/\d+\s*px/);
+  });
+
+  it('6. ensures no green alignment guides are added to the canvas overlay', () => {
+    const { container } = render(
+      <RegionOverlay
+        imageWidth={1000}
+        imageHeight={1000}
+        displayWidth={1000}
+        displayHeight={1000}
+        regions={[sampleRegion1]}
+        selectedRegionId="region-1001"
+        activeStage="typesetting"
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onAddRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        isDrawingMode={false}
+      />
+    );
+
+    // Green dashed guide lines (border-emerald-400) should NOT exist
+    const greenGuides = container.querySelectorAll('.border-emerald-400');
+    expect(greenGuides.length).toBe(0);
   });
 });

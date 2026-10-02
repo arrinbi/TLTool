@@ -38,6 +38,29 @@ interface RegionOverlayProps {
   qcReport?: QcReport | null;
 }
 
+const getFontSizeIndicatorPositionClass = (handle: string) => {
+  switch (handle) {
+    case 'se':
+      return 'top-full left-full mt-1.5 ml-1.5';
+    case 'nw':
+      return 'bottom-full right-full mb-1.5 mr-1.5';
+    case 'ne':
+      return 'bottom-full left-full mb-1.5 ml-1.5';
+    case 'sw':
+      return 'top-full right-full mt-1.5 mr-1.5';
+    case 'n':
+      return 'bottom-full left-1/2 -translate-x-1/2 mb-1.5';
+    case 's':
+      return 'top-full left-1/2 -translate-x-1/2 mt-1.5';
+    case 'w':
+      return 'top-1/2 -translate-y-1/2 right-full mr-1.5';
+    case 'e':
+      return 'top-1/2 -translate-y-1/2 left-full ml-1.5';
+    default:
+      return 'top-full left-full mt-1.5 ml-1.5';
+  }
+};
+
 const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   imageWidth,
   imageHeight,
@@ -163,8 +186,8 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         setDrawStart(imgPos);
         setDrawCurrent(imgPos);
       }
-    } else if (e.target === containerRef.current) {
-      // Clicked on empty canvas background
+    } else {
+      // Clicked on empty canvas background (outside any text box)
       onSelectRegion(null);
     }
   };
@@ -488,28 +511,10 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
           const innerWidth = Math.max(2, details.innerBounds.width * scaleX);
           const innerHeight = Math.max(2, details.innerBounds.height * scaleY);
 
+          const isResizingThis = activeRegionId === region.id && activeHandle !== null && activeHandle !== 'body';
+
           return (
             <React.Fragment key={`typeset-box-wrapper-${region.id}`}>
-              {/* Visual Alignment Guides (render for selected region) */}
-              {isSelected && (
-                <>
-                  {/* Vertical Guide Line through box/text center */}
-                  {details.isHorizontallyCentered && (
-                    <div
-                      style={{ left: `${details.boxCenter.x * scaleX}px` }}
-                      className="absolute top-0 bottom-0 border-r-2 border-dashed border-emerald-400 pointer-events-none z-30 shadow-sm"
-                    />
-                  )}
-                  {/* Horizontal Guide Line through box/text center */}
-                  {details.isVerticallyCentered && (
-                    <div
-                      style={{ top: `${details.boxCenter.y * scaleY}px` }}
-                      className="absolute left-0 right-0 border-b-2 border-dashed border-emerald-400 pointer-events-none z-30 shadow-sm"
-                    />
-                  )}
-                </>
-              )}
-
               {/* Typesetting Box Container */}
               <div
                 key={`typeset-box-${region.id}`}
@@ -521,43 +526,56 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
                   width: `${width}px`,
                   height: `${height}px`,
                 }}
-                className={`group rounded border-2 transition-colors cursor-move z-20 ${
+                className={
                   isSelected
-                    ? 'border-indigo-400 bg-indigo-500/10 ring-2 ring-indigo-400/60 shadow-xl'
-                    : 'border-indigo-400/40 hover:border-indigo-400/80 hover:bg-indigo-500/5'
-                }`}
+                    ? 'group rounded border-2 transition-colors cursor-move z-20 border-indigo-400 bg-indigo-500/10 ring-2 ring-indigo-400/60 shadow-xl'
+                    : 'cursor-pointer z-20 bg-transparent'
+                }
               >
-                {/* Region Badge & Alignment Status */}
-                <div
-                  className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-md flex items-center gap-1.5 ${
-                    isSelected ? 'bg-indigo-600' : 'bg-slate-800/90'
-                  }`}
-                >
-                  <span>#{region.id.slice(-4)}</span>
-                  <span
-                    className={`text-[9px] px-1 rounded ${
-                      details.alignmentStatus === 'Centered'
-                        ? 'bg-emerald-500/30 text-emerald-300'
-                        : details.alignmentStatus === 'Almost centered'
-                        ? 'bg-amber-500/30 text-amber-300'
-                        : 'bg-slate-700 text-slate-300'
-                    }`}
+                {/* Region Badge & Alignment Status (rendered when selected) */}
+                {isSelected && (
+                  <div
+                    className="absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-md flex items-center gap-1.5 bg-indigo-600"
                   >
-                    {details.alignmentStatus}
-                  </span>
-                </div>
+                    <span>#{region.id.slice(-4)}</span>
+                    <span
+                      className={`text-[9px] px-1 rounded ${
+                        details.alignmentStatus === 'Centered'
+                          ? 'bg-emerald-500/30 text-emerald-300'
+                          : details.alignmentStatus === 'Almost centered'
+                          ? 'bg-amber-500/30 text-amber-300'
+                          : 'bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {details.alignmentStatus}
+                    </span>
+                  </div>
+                )}
 
-                {/* Usable Inner Area (Padding Boundary) */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: `${innerLeft}px`,
-                    top: `${innerTop}px`,
-                    width: `${innerWidth}px`,
-                    height: `${innerHeight}px`,
-                  }}
-                  className="border border-dashed border-indigo-400/40 pointer-events-none rounded-sm"
-                />
+                {/* Usable Inner Area Padding Boundary (rendered when selected) */}
+                {isSelected && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${innerLeft}px`,
+                      top: `${innerTop}px`,
+                      width: `${innerWidth}px`,
+                      height: `${innerHeight}px`,
+                    }}
+                    className="border border-dashed border-indigo-400/40 pointer-events-none rounded-sm"
+                  />
+                )}
+
+                {/* Live Font Size Indicator during transform resize */}
+                {isSelected && isResizingThis && activeHandle && (
+                  <div
+                    className={`absolute z-40 px-2 py-0.5 bg-slate-900/95 text-white border border-indigo-400 text-xs font-mono font-bold rounded shadow-lg whitespace-nowrap pointer-events-none ${getFontSizeIndicatorPositionClass(
+                      activeHandle
+                    )}`}
+                  >
+                    {details.fontSize} px
+                  </div>
+                )}
 
                 {/* 8 Resize Handles (rendered when selected) */}
                 {isSelected && (
