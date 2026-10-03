@@ -884,30 +884,57 @@ export async function cleanImageRegion(
 
   const chosenColor = parseHex(hexColor);
 
-  if (options.method === 'lama') {
-    await inpaintLaMa(patchImageData, targetMask);
-  } else if (options.method === 'migan') {
-    await inpaintMIGAN(patchImageData, targetMask);
-  } else if (options.method === 'solid-white') {
-    cleanBubbleText(patchImageData, targetMask, chosenColor);
-  } else if (options.method === 'border-sample') {
-    cleanBubbleText(patchImageData, targetMask, avgBgColor);
-  } else if (options.method === 'opencv-telea') {
-    await inpaintOpenCVTelea(patchImageData, targetMask);
-  } else {
-    // smart-fill or default method
-    if (isUniformBg) {
-      cleanBubbleText(patchImageData, targetMask, avgBgColor);
-    } else {
-      await inpaintOpenCVTelea(patchImageData, targetMask);
+  // SEPARATE: 1. INPAINTING / CONTEXT AREA, 2. FINAL REPLACEMENT / COMPOSITING MASK.
+  // For Brush Cleaning, create an expanded internal context mask so inpainting engines
+  // sample pristine background pixels beyond anti-aliased text fringes.
+  // The final compositing mask remains strictly the intended target (targetMask).
+  const finalCompositingMask = targetMask;
+  let inpaintContextMask = targetMask;
+
+  if (options.brushMask || options.isBrush) {
+    inpaintContextMask = new Uint8Array(targetW * targetH);
+    const dilationRadius = 2;
+    for (let y = 0; y < targetH; y++) {
+      for (let x = 0; x < targetW; x++) {
+        if (targetMask[y * targetW + x] > 0) {
+          for (let dy = -dilationRadius; dy <= dilationRadius; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= targetH) continue;
+            for (let dx = -dilationRadius; dx <= dilationRadius; dx++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= targetW) continue;
+              inpaintContextMask[ny * targetW + nx] = 1;
+            }
+          }
+        }
+      }
     }
   }
 
-  // Precise Compositing: Ensure ONLY pixels marked in targetMask are replaced.
-  // Restore all unmasked pixels (targetMask[i] === 0) to exact original values.
+  if (options.method === 'lama') {
+    await inpaintLaMa(patchImageData, inpaintContextMask);
+  } else if (options.method === 'migan') {
+    await inpaintMIGAN(patchImageData, inpaintContextMask);
+  } else if (options.method === 'solid-white') {
+    cleanBubbleText(patchImageData, inpaintContextMask, chosenColor);
+  } else if (options.method === 'border-sample') {
+    cleanBubbleText(patchImageData, inpaintContextMask, avgBgColor);
+  } else if (options.method === 'opencv-telea') {
+    await inpaintOpenCVTelea(patchImageData, inpaintContextMask);
+  } else {
+    // smart-fill or default method
+    if (isUniformBg) {
+      cleanBubbleText(patchImageData, inpaintContextMask, avgBgColor);
+    } else {
+      await inpaintOpenCVTelea(patchImageData, inpaintContextMask);
+    }
+  }
+
+  // Precise Compositing: Ensure ONLY pixels marked in finalCompositingMask are replaced.
+  // Restore all unmasked pixels (finalCompositingMask[i] === 0) to exact original values.
   const totalPatchPixels = targetW * targetH;
   for (let i = 0; i < totalPatchPixels; i++) {
-    if (!targetMask[i]) {
+    if (!finalCompositingMask[i]) {
       const idx = i * 4;
       patchImageData.data[idx] = originalPatchData[idx];
       patchImageData.data[idx + 1] = originalPatchData[idx + 1];
