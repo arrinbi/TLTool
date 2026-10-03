@@ -7,7 +7,6 @@ import {
   getEffectiveTypesettingBounds,
   getRenderedTextDetails,
 } from '../modules/typesetting/typesettingService';
-import { AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface RegionOverlayProps {
   imageWidth: number;
@@ -77,7 +76,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   brushSize = 15,
   manualCategory,
   defaultFontFamily = 'sans-serif',
-  qcReport,
+  qcReport: _qcReport,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const typesettingCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -97,21 +96,6 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
 
-  // Map issues per region
-  const regionQcSeverityMap = useMemo(() => {
-    const map = new Map<string, 'error' | 'warning' | 'ok'>();
-    if (!qcReport || !qcReport.issues) return map;
-
-    for (const issue of qcReport.issues) {
-      const current = map.get(issue.regionId);
-      if (issue.severity === 'error') {
-        map.set(issue.regionId, 'error');
-      } else if (issue.severity === 'warning' && current !== 'error') {
-        map.set(issue.regionId, 'warning');
-      }
-    }
-    return map;
-  }, [qcReport]);
 
   useEffect(() => {
     return () => {
@@ -422,7 +406,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
       }}
     >
       {/* Non-Destructive Typesetting Canvas Overlay */}
-      {activeStage === 'typesetting' && (
+      {(activeStage === 'typesetting' || activeStage === 'qc') && (
         <canvas
           ref={typesettingCanvasRef}
           className="absolute inset-0 pointer-events-none z-10"
@@ -435,67 +419,8 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         />
       )}
 
-      {/* STAGE 4: QC WORKSPACE OVERLAYS */}
-      {activeStage === 'qc' &&
-        regions.map((region) => {
-          const isSelected = region.id === selectedRegionId;
-          const left = region.bbox.x * scaleX;
-          const top = region.bbox.y * scaleY;
-          const width = region.bbox.width * scaleX;
-          const height = region.bbox.height * scaleY;
-          const severity = regionQcSeverityMap.get(region.id) || 'ok';
-
-          let borderBgClasses = 'border-emerald-500 bg-emerald-500/10';
-          let badgeBgClass = 'bg-emerald-600';
-          let BadgeIcon = CheckCircle2;
-
-          if (severity === 'error') {
-            borderBgClasses = isSelected
-              ? 'border-red-400 bg-red-500/30 ring-4 ring-red-400'
-              : 'border-red-500 bg-red-500/20 ring-2 ring-red-500/60';
-            badgeBgClass = 'bg-red-600';
-            BadgeIcon = AlertCircle;
-          } else if (severity === 'warning') {
-            borderBgClasses = isSelected
-              ? 'border-amber-300 bg-amber-400/30 ring-4 ring-amber-300'
-              : 'border-amber-400 bg-amber-400/20 ring-2 ring-amber-400/60';
-            badgeBgClass = 'bg-amber-600';
-            BadgeIcon = AlertTriangle;
-          } else if (isSelected) {
-            borderBgClasses = 'border-indigo-400 bg-indigo-500/20 ring-2 ring-indigo-400';
-            badgeBgClass = 'bg-indigo-600';
-          }
-
-          return (
-            <div
-              key={`qc-overlay-${region.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectRegion(region.id);
-              }}
-              style={{
-                position: 'absolute',
-                left: `${left}px`,
-                top: `${top}px`,
-                width: `${width}px`,
-                height: `${height}px`,
-              }}
-              className={`group rounded border-2 transition-all cursor-pointer z-20 ${borderBgClasses}`}
-            >
-              {/* QC Status Badge */}
-              <div
-                className={`absolute -top-6 left-0 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow-md flex items-center gap-1 ${badgeBgClass}`}
-              >
-                <BadgeIcon className="w-3 h-3 text-white" />
-                <span>#{region.id.slice(-4)}</span>
-                {severity !== 'ok' && <span className="uppercase text-[9px] font-extrabold">{severity}</span>}
-              </div>
-            </div>
-          );
-        })}
-
-      {/* Typesetting & QC Mode Interactive Text Box Overlays with 8 Resize Handles */}
-      {(activeStage === 'typesetting' || activeStage === 'qc') &&
+      {/* Typesetting Mode Interactive Text Box Overlays with 8 Resize Handles */}
+      {activeStage === 'typesetting' &&
         regions.map((region) => {
           const bounds = getEffectiveTypesettingBounds(region);
           const details = getRenderedTextDetails(region, undefined, defaultFontFamily);

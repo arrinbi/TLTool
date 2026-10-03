@@ -6,7 +6,7 @@ import { RegionInspector } from '../RegionInspector';
 import { RegionOverlay } from '../RegionOverlay';
 import type { ManhwaPage, TextRegion } from '../../types';
 
-describe('Typesetting QC & Alignment Editor Workspace', () => {
+describe('Final Preview & Export Stage (Stage 4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -34,7 +34,7 @@ describe('Typesetting QC & Alignment Editor Workspace', () => {
     regions: [sampleRegion],
   };
 
-  it('switches to Stage 4 and displays Typesetting QC panel controls in App', async () => {
+  it('switches to Stage 4 and displays Final Preview & Export controls in App', async () => {
     render(<App />);
 
     await waitFor(() => {
@@ -45,55 +45,20 @@ describe('Typesetting QC & Alignment Editor Workspace', () => {
     fireEvent.click(qcStageBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Typesetting QC & Alignment')).toBeInTheDocument();
-      expect(screen.getByText('Technical Validation Check')).toBeInTheDocument();
+      expect(screen.getByText('Final Preview & Export')).toBeInTheDocument();
+      expect(screen.getByText('Export All as PDF')).toBeInTheDocument();
+      expect(screen.getByText('Export All as ZIP')).toBeInTheDocument();
     });
   });
 
-  it('renders RegionInspector in Stage 4 with region selection and layout actions', () => {
-    const handleUpdate = vi.fn();
-    const handleSelect = vi.fn();
-
+  it('renders RegionInspector in Stage 4 without editing controls', () => {
     render(
       <RegionInspector
         page={samplePage}
         selectedRegionId="region-qc-1"
         activeStage="qc"
-        onSelectRegion={handleSelect}
-        onUpdateRegion={handleUpdate}
-        onDeleteRegion={vi.fn()}
-        detectionMode="auto"
-        onSelectDetectionMode={vi.fn()}
-        manualCategory="bubble-oval"
-        onSelectManualCategory={vi.fn()}
-        onRunOcr={vi.fn()}
-        onCleanRegion={vi.fn()}
-        onCleanAllRegions={vi.fn()}
-        onRevertRegion={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText('Typesetting QC & Alignment')).toBeInTheDocument();
-    expect(screen.getByText('Layout Actions')).toBeInTheDocument();
-    expect(screen.getByText('Fit Box to Region')).toBeInTheDocument();
-    expect(screen.getByText('Auto Fit Text')).toBeInTheDocument();
-    expect(screen.getByText('Center Both')).toBeInTheDocument();
-    expect(screen.getByText('Alignment Status')).toBeInTheDocument();
-  });
-
-  it('triggers Center Both and updates region alignment metadata without touching OCR bbox', () => {
-    let currentRegion = { ...sampleRegion };
-    const handleUpdate = vi.fn((reg: TextRegion) => {
-      currentRegion = reg;
-    });
-
-    render(
-      <RegionInspector
-        page={{ ...samplePage, regions: [currentRegion] }}
-        selectedRegionId="region-qc-1"
-        activeStage="qc"
         onSelectRegion={vi.fn()}
-        onUpdateRegion={handleUpdate}
+        onUpdateRegion={vi.fn()}
         onDeleteRegion={vi.fn()}
         detectionMode="auto"
         onSelectDetectionMode={vi.fn()}
@@ -106,85 +71,19 @@ describe('Typesetting QC & Alignment Editor Workspace', () => {
       />
     );
 
-    const centerBothBtn = screen.getByText('Center Both');
-    fireEvent.click(centerBothBtn);
+    expect(screen.getByText('Final Preview & Export')).toBeInTheDocument();
+    expect(screen.getByText('EXPORT')).toBeInTheDocument();
+    expect(screen.getByText('Visual Check Summary')).toBeInTheDocument();
 
-    expect(handleUpdate).toHaveBeenCalled();
-    expect(currentRegion.typesetting?.align).toBe('center');
-    expect(currentRegion.typesetting?.vAlign).toBe('middle');
-    // Ensure OCR bbox is strictly unchanged
-    expect(currentRegion.bbox).toEqual({ x: 100, y: 100, width: 200, height: 100 });
+    // Verify editing controls are NOT present
+    expect(screen.queryByText('Selected Region')).not.toBeInTheDocument();
+    expect(screen.queryByText('Layout Actions')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fit Box to Region')).not.toBeInTheDocument();
+    expect(screen.queryByText('Auto Fit Text')).not.toBeInTheDocument();
+    expect(screen.queryByText('Center Both')).not.toBeInTheDocument();
   });
 
-  it('allows changing box padding without modifying OCR bbox', () => {
-    let currentRegion = { ...sampleRegion };
-    const handleUpdate = vi.fn((reg: TextRegion) => {
-      currentRegion = reg;
-    });
-
-    render(
-      <RegionInspector
-        page={{ ...samplePage, regions: [currentRegion] }}
-        selectedRegionId="region-qc-1"
-        activeStage="qc"
-        onSelectRegion={vi.fn()}
-        onUpdateRegion={handleUpdate}
-        onDeleteRegion={vi.fn()}
-        detectionMode="auto"
-        onSelectDetectionMode={vi.fn()}
-        manualCategory="bubble-oval"
-        onSelectManualCategory={vi.fn()}
-        onRunOcr={vi.fn()}
-        onCleanRegion={vi.fn()}
-        onCleanAllRegions={vi.fn()}
-        onRevertRegion={vi.fn()}
-      />
-    );
-
-    const paddingInputs = screen.getAllByDisplayValue('4');
-    fireEvent.change(paddingInputs[0], { target: { value: '15' } });
-
-    expect(handleUpdate).toHaveBeenCalled();
-    expect(currentRegion.typesetting?.padding).toBe(15);
-    expect(currentRegion.bbox).toEqual({ x: 100, y: 100, width: 200, height: 100 });
-  });
-
-  it('allows updating position X, Y, W, H without modifying OCR bbox', () => {
-    let currentRegion = { ...sampleRegion };
-    const handleUpdate = vi.fn((reg: TextRegion) => {
-      currentRegion = reg;
-    });
-
-    render(
-      <RegionInspector
-        page={{ ...samplePage, regions: [currentRegion] }}
-        selectedRegionId="region-qc-1"
-        activeStage="qc"
-        onSelectRegion={vi.fn()}
-        onUpdateRegion={handleUpdate}
-        onDeleteRegion={vi.fn()}
-        detectionMode="auto"
-        onSelectDetectionMode={vi.fn()}
-        manualCategory="bubble-oval"
-        onSelectManualCategory={vi.fn()}
-        onRunOcr={vi.fn()}
-        onCleanRegion={vi.fn()}
-        onCleanAllRegions={vi.fn()}
-        onRevertRegion={vi.fn()}
-      />
-    );
-
-    const inputs100 = screen.getAllByDisplayValue('100');
-    const xInput = inputs100[0]; // First 100 input is X
-    fireEvent.change(xInput, { target: { value: '150' } });
-
-    expect(handleUpdate).toHaveBeenCalled();
-    expect(currentRegion.typesetting?.bounds?.x).toBe(150);
-    // OCR bbox remains unchanged!
-    expect(currentRegion.bbox).toEqual({ x: 100, y: 100, width: 200, height: 100 });
-  });
-
-  it('renders interactive visual typesetting box and 8 resize handles on RegionOverlay in Stage 4', () => {
+  it('does NOT render editing overlays, resize handles, or guides on RegionOverlay in Stage 4', () => {
     render(
       <RegionOverlay
         imageWidth={600}
@@ -202,13 +101,46 @@ describe('Typesetting QC & Alignment Editor Workspace', () => {
       />
     );
 
-    expect(screen.getByTitle('Resize Top-Left')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Top-Right')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Bottom-Left')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Bottom-Right')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Top')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Bottom')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Left')).toBeInTheDocument();
-    expect(screen.getByTitle('Resize Right')).toBeInTheDocument();
+    // Editing handles must NOT be rendered in Stage 4
+    expect(screen.queryByTitle('Resize Top-Left')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Top-Right')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Bottom-Left')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Bottom-Right')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Top')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Bottom')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Left')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Resize Right')).not.toBeInTheDocument();
+  });
+
+  it('triggers PDF and ZIP exports when clicking export buttons in RegionInspector', () => {
+    const handleExportPdf = vi.fn();
+    const handleExportZip = vi.fn();
+
+    render(
+      <RegionInspector
+        page={samplePage}
+        selectedRegionId="region-qc-1"
+        activeStage="qc"
+        onSelectRegion={vi.fn()}
+        onUpdateRegion={vi.fn()}
+        onDeleteRegion={vi.fn()}
+        detectionMode="auto"
+        onSelectDetectionMode={vi.fn()}
+        manualCategory="bubble-oval"
+        onSelectManualCategory={vi.fn()}
+        onRunOcr={vi.fn()}
+        onCleanRegion={vi.fn()}
+        onCleanAllRegions={vi.fn()}
+        onRevertRegion={vi.fn()}
+        onExportPdf={handleExportPdf}
+        onExportZip={handleExportZip}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Export All as PDF'));
+    expect(handleExportPdf).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('Export All as ZIP'));
+    expect(handleExportZip).toHaveBeenCalledTimes(1);
   });
 });

@@ -36,6 +36,7 @@ import { processFontUpload, unregisterCustomFont } from './modules/typesetting/f
 
 import type { QcReport, QcIssue } from './modules/qc/qcService';
 import { runQualityControl } from './modules/qc/qcService';
+import { exportPagesAsPdf, exportPagesAsZip } from './modules/export/exportService';
 import { ShieldCheck, AlertTriangle, AlertCircle, X, Download } from 'lucide-react';
 
 export function App() {
@@ -897,6 +898,27 @@ export function App() {
     document.body.removeChild(a);
   }, [selectedPage]);
 
+  // PDF and ZIP Export Handlers
+  const handleExportAllPagesPdf = useCallback(async () => {
+    if (pages.length === 0) return;
+    try {
+      await exportPagesAsPdf(pages, defaultFontFamily);
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      alert('Failed to export PDF.');
+    }
+  }, [pages, defaultFontFamily]);
+
+  const handleExportAllPagesZip = useCallback(async () => {
+    if (pages.length === 0) return;
+    try {
+      await exportPagesAsZip(pages, defaultFontFamily);
+    } catch (err) {
+      console.error('Failed to export ZIP:', err);
+      alert('Failed to export ZIP.');
+    }
+  }, [pages, defaultFontFamily]);
+
   const handleRawExportAllPages = useCallback(() => {
     pages.forEach((p, idx) => {
       setTimeout(() => {
@@ -983,6 +1005,8 @@ export function App() {
         onExportCleanedImage={() => executeWithExportSafeguard(handleRawExportCleanedImage)}
         onExportTypesetImage={() => executeWithExportSafeguard(handleRawExportTypesetImage)}
         onExportAllPages={() => executeWithExportSafeguard(handleRawExportAllPages)}
+        onExportAllPagesPdf={() => executeWithExportSafeguard(handleExportAllPagesPdf)}
+        onExportAllPagesZip={() => executeWithExportSafeguard(handleExportAllPagesZip)}
         onExportProjectJson={() => executeWithExportSafeguard(handleRawExportProjectJson)}
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
       />
@@ -1038,6 +1062,7 @@ export function App() {
         {/* Sidebar Right: Region Inspector & Cleaning Options */}
         <RegionInspector
           page={selectedPage}
+          pages={pages}
           selectedRegionId={selectedRegionId}
           activeStage={activeStage}
           onSelectRegion={setSelectedRegionId}
@@ -1079,6 +1104,15 @@ export function App() {
           currentIssueIndex={currentIssueIndex}
           selectedIssueId={selectedIssueId}
           onSelectIssue={handleSelectIssue}
+          onExportPdf={() => executeWithExportSafeguard(handleExportAllPagesPdf)}
+          onExportZip={() => executeWithExportSafeguard(handleExportAllPagesZip)}
+          onExportSinglePagePdf={() => executeWithExportSafeguard(async () => {
+            if (selectedPage) {
+              await exportPagesAsPdf([selectedPage], defaultFontFamily);
+            }
+          })}
+          onExportSinglePagePng={() => executeWithExportSafeguard(handleRawExportTypesetImage)}
+          onNavigateToStage={setActiveStage}
         />
       </div>
 
