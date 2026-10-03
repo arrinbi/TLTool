@@ -792,59 +792,280 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                 </div>
               </div>
 
-              {/* Text Color & Line Height */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[11px] text-slate-400 font-medium">Text Color</label>
-                  <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
+              {/* Text Color & Gradient */}
+              <div className="flex flex-col gap-2 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-slate-300 font-semibold">Text Color</label>
+                  <div className="flex bg-slate-950 p-0.5 rounded-md border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: {
+                            ...selectedRegion.typesetting,
+                            colorMode: 'solid',
+                          },
+                        })
+                      }
+                      className={`px-2 py-0.5 text-[10px] font-medium rounded cursor-pointer transition-colors ${
+                        currentStyle.colorMode !== 'gradient'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      aria-label="Solid color mode"
+                    >
+                      Solid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateRegion({
+                          ...selectedRegion,
+                          typesetting: {
+                            ...selectedRegion.typesetting,
+                            colorMode: 'gradient',
+                          },
+                        })
+                      }
+                      className={`px-2 py-0.5 text-[10px] font-medium rounded cursor-pointer transition-colors ${
+                        currentStyle.colorMode === 'gradient'
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      aria-label="Gradient color mode"
+                    >
+                      Gradient
+                    </button>
+                  </div>
+                </div>
+
+                {currentStyle.colorMode !== 'gradient' ? (
+                  <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
                     <input
                       type="color"
+                      aria-label="Solid Text Color Picker"
                       value={currentStyle.color}
                       onChange={(e) =>
                         onUpdateRegion({
                           ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, color: e.target.value },
+                          typesetting: {
+                            ...selectedRegion.typesetting,
+                            color: e.target.value,
+                          },
                         })
                       }
                       className="w-6 h-6 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
                     />
                     <input
                       type="text"
+                      aria-label="Solid Text Color Value"
                       value={currentStyle.color}
                       onChange={(e) =>
                         onUpdateRegion({
                           ...selectedRegion,
-                          typesetting: { ...selectedRegion.typesetting, color: e.target.value },
+                          typesetting: {
+                            ...selectedRegion.typesetting,
+                            color: e.target.value,
+                          },
                         })
                       }
-                      className="w-full bg-transparent text-slate-200 font-mono text-[10px] focus:outline-none"
+                      className="w-full bg-transparent text-slate-200 font-mono text-[11px] focus:outline-none"
                     />
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-slate-400 font-medium">Start Color</span>
+                        <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                          <input
+                            type="color"
+                            aria-label="Gradient Start Color Picker"
+                            value={currentStyle.gradient?.startColor ?? '#000000'}
+                            onChange={(e) =>
+                              onUpdateRegion({
+                                ...selectedRegion,
+                                typesetting: {
+                                  ...selectedRegion.typesetting,
+                                  gradient: {
+                                    startColor: e.target.value,
+                                    endColor: currentStyle.gradient?.endColor ?? '#ffffff',
+                                    direction: currentStyle.gradient?.direction ?? 'horizontal',
+                                  },
+                                },
+                              })
+                            }
+                            className="w-5 h-5 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
+                          />
+                          <input
+                            type="text"
+                            aria-label="Gradient Start Color Value"
+                            value={currentStyle.gradient?.startColor ?? '#000000'}
+                            onChange={(e) =>
+                              onUpdateRegion({
+                                ...selectedRegion,
+                                typesetting: {
+                                  ...selectedRegion.typesetting,
+                                  gradient: {
+                                    startColor: e.target.value,
+                                    endColor: currentStyle.gradient?.endColor ?? '#ffffff',
+                                    direction: currentStyle.gradient?.direction ?? 'horizontal',
+                                  },
+                                },
+                              })
+                            }
+                            className="w-full bg-transparent text-slate-200 font-mono text-[10px] focus:outline-none"
+                          />
+                        </div>
+                      </div>
 
-                <div className="flex flex-col gap-1">
-                  <div className="flex justify-between text-[11px] text-slate-400 font-medium">
-                    <span>Line Height</span>
-                    <span className="text-slate-300">{currentStyle.lineHeight}</span>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-slate-400 font-medium">End Color</span>
+                        <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                          <input
+                            type="color"
+                            aria-label="Gradient End Color Picker"
+                            value={currentStyle.gradient?.endColor ?? '#ffffff'}
+                            onChange={(e) =>
+                              onUpdateRegion({
+                                ...selectedRegion,
+                                typesetting: {
+                                  ...selectedRegion.typesetting,
+                                  gradient: {
+                                    startColor: currentStyle.gradient?.startColor ?? '#000000',
+                                    endColor: e.target.value,
+                                    direction: currentStyle.gradient?.direction ?? 'horizontal',
+                                  },
+                                },
+                              })
+                            }
+                            className="w-5 h-5 rounded border border-slate-700 bg-transparent cursor-pointer shrink-0"
+                          />
+                          <input
+                            type="text"
+                            aria-label="Gradient End Color Value"
+                            value={currentStyle.gradient?.endColor ?? '#ffffff'}
+                            onChange={(e) =>
+                              onUpdateRegion({
+                                ...selectedRegion,
+                                typesetting: {
+                                  ...selectedRegion.typesetting,
+                                  gradient: {
+                                    startColor: currentStyle.gradient?.startColor ?? '#000000',
+                                    endColor: e.target.value,
+                                    direction: currentStyle.gradient?.direction ?? 'horizontal',
+                                  },
+                                },
+                              })
+                            }
+                            className="w-full bg-transparent text-slate-200 font-mono text-[10px] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-slate-400 font-medium">Direction</span>
+                      <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateRegion({
+                              ...selectedRegion,
+                              typesetting: {
+                                ...selectedRegion.typesetting,
+                                gradient: {
+                                  startColor: currentStyle.gradient?.startColor ?? '#000000',
+                                  endColor: currentStyle.gradient?.endColor ?? '#ffffff',
+                                  direction: 'horizontal',
+                                },
+                              },
+                            })
+                          }
+                          className={`py-1 text-[10px] font-medium rounded cursor-pointer transition-colors text-center ${
+                            currentStyle.gradient?.direction === 'horizontal'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Horizontal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateRegion({
+                              ...selectedRegion,
+                              typesetting: {
+                                ...selectedRegion.typesetting,
+                                gradient: {
+                                  startColor: currentStyle.gradient?.startColor ?? '#000000',
+                                  endColor: currentStyle.gradient?.endColor ?? '#ffffff',
+                                  direction: 'vertical',
+                                },
+                              },
+                            })
+                          }
+                          className={`py-1 text-[10px] font-medium rounded cursor-pointer transition-colors text-center ${
+                            currentStyle.gradient?.direction === 'vertical'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Vertical
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateRegion({
+                              ...selectedRegion,
+                              typesetting: {
+                                ...selectedRegion.typesetting,
+                                gradient: {
+                                  startColor: currentStyle.gradient?.startColor ?? '#000000',
+                                  endColor: currentStyle.gradient?.endColor ?? '#ffffff',
+                                  direction: 'diagonal',
+                                },
+                              },
+                            })
+                          }
+                          className={`py-1 text-[10px] font-medium rounded cursor-pointer transition-colors text-center ${
+                            currentStyle.gradient?.direction === 'diagonal'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Diagonal
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="2"
-                    step="0.1"
-                    value={currentStyle.lineHeight}
-                    onChange={(e) =>
-                      onUpdateRegion({
-                        ...selectedRegion,
-                        typesetting: {
-                          ...selectedRegion.typesetting,
-                          lineHeight: Number(e.target.value),
-                        },
-                      })
-                    }
-                    className="accent-indigo-500 cursor-pointer mt-1"
-                  />
+                )}
+              </div>
+
+              {/* Line Height */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-[11px] text-slate-400 font-medium">
+                  <span>Line Height</span>
+                  <span className="text-slate-300">{currentStyle.lineHeight}</span>
                 </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="2"
+                  step="0.1"
+                  value={currentStyle.lineHeight}
+                  onChange={(e) =>
+                    onUpdateRegion({
+                      ...selectedRegion,
+                      typesetting: {
+                        ...selectedRegion.typesetting,
+                        lineHeight: Number(e.target.value),
+                      },
+                    })
+                  }
+                  className="accent-indigo-500 cursor-pointer mt-1"
+                />
               </div>
             </div>
           ) : (
