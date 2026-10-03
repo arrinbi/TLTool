@@ -132,6 +132,80 @@ export interface TextMaskResult {
 }
 
 /**
+ * Samples unmasked background pixels in an image patch to check for background color uniformity
+ * and return average background color.
+ */
+export function analyzePatchBackground(
+  imgData: ImageData,
+  mask: Uint8Array
+): { isUniform: boolean; avgColor: { r: number; g: number; b: number } } {
+  const { width, height, data } = imgData;
+  const len = mask.length;
+  if (len === 0 || len !== width * height) {
+    return { isUniform: true, avgColor: { r: 255, g: 255, b: 255 } };
+  }
+
+  const unmaskedPixels: Array<{ r: number; g: number; b: number; lum: number }> = [];
+
+  for (let i = 0; i < len; i++) {
+    if (!mask[i]) {
+      const idx = i * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      unmaskedPixels.push({ r, g, b, lum });
+    }
+  }
+
+  if (unmaskedPixels.length === 0) {
+    return { isUniform: true, avgColor: { r: 255, g: 255, b: 255 } };
+  }
+
+  // Trimmed mean to ignore border outline strokes or outlier pixels
+  unmaskedPixels.sort((a, b) => a.lum - b.lum);
+  const trimStart = Math.floor(unmaskedPixels.length * 0.15);
+  const trimEnd = Math.ceil(unmaskedPixels.length * 0.85);
+
+  let sumR = 0, sumG = 0, sumB = 0, count = 0;
+  for (let i = trimStart; i < trimEnd; i++) {
+    sumR += unmaskedPixels[i].r;
+    sumG += unmaskedPixels[i].g;
+    sumB += unmaskedPixels[i].b;
+    count++;
+  }
+
+  if (count === 0) {
+    for (const p of unmaskedPixels) {
+      sumR += p.r;
+      sumG += p.g;
+      sumB += p.b;
+      count++;
+    }
+  }
+
+  const avgR = Math.round(sumR / count);
+  const avgG = Math.round(sumG / count);
+  const avgB = Math.round(sumB / count);
+
+  const avgLum = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+  let varianceSum = 0;
+
+  for (let i = trimStart; i < trimEnd; i++) {
+    const diff = unmaskedPixels[i].lum - avgLum;
+    varianceSum += diff * diff;
+  }
+
+  const stdDev = count > 0 ? Math.sqrt(varianceSum / count) : 0;
+  const isUniform = stdDev < 15;
+
+  return {
+    isUniform,
+    avgColor: { r: avgR, g: avgG, b: avgB },
+  };
+}
+
+/**
  * Creates an HTMLCanvasElement initialized with an image source at full native pixel resolution.
  */
 export async function createFullResCanvas(
@@ -755,6 +829,8 @@ export async function cleanImageRegion(
   }
 
   const patchImageData = ctx.getImageData(targetX, targetY, targetW, targetH);
+  // Keep exact copy of original patch pixels for precise compositing
+  const originalPatchData = new Uint8ClampedArray(patchImageData.data);
 
   let targetMask: Uint8Array;
   let isUniformBg = false;
@@ -776,6 +852,10 @@ export async function cleanImageRegion(
         }
       }
     }
+
+    const patchAnalysis = analyzePatchBackground(patchImageData, targetMask);
+    isUniformBg = patchAnalysis.isUniform;
+    avgBgColor = patchAnalysis.avgColor;
   } else {
     const textMaskResult = generateTextMask(
       patchImageData,
@@ -808,18 +888,31 @@ export async function cleanImageRegion(
     await inpaintLaMa(patchImageData, targetMask);
   } else if (options.method === 'migan') {
     await inpaintMIGAN(patchImageData, targetMask);
-  } else if (options.isBrush || options.brushMask || options.category === 'text-outside' || options.method === 'opencv-telea') {
-    await inpaintOpenCVTelea(patchImageData, targetMask);
   } else if (options.method === 'solid-white') {
     cleanBubbleText(patchImageData, targetMask, chosenColor);
   } else if (options.method === 'border-sample') {
     cleanBubbleText(patchImageData, targetMask, avgBgColor);
+  } else if (options.method === 'opencv-telea') {
+    await inpaintOpenCVTelea(patchImageData, targetMask);
   } else {
-    // smart-fill method
+    // smart-fill or default method
     if (isUniformBg) {
       cleanBubbleText(patchImageData, targetMask, avgBgColor);
     } else {
       await inpaintOpenCVTelea(patchImageData, targetMask);
+    }
+  }
+
+  // Precise Compositing: Ensure ONLY pixels marked in targetMask are replaced.
+  // Restore all unmasked pixels (targetMask[i] === 0) to exact original values.
+  const totalPatchPixels = targetW * targetH;
+  for (let i = 0; i < totalPatchPixels; i++) {
+    if (!targetMask[i]) {
+      const idx = i * 4;
+      patchImageData.data[idx] = originalPatchData[idx];
+      patchImageData.data[idx + 1] = originalPatchData[idx + 1];
+      patchImageData.data[idx + 2] = originalPatchData[idx + 2];
+      patchImageData.data[idx + 3] = originalPatchData[idx + 3];
     }
   }
 
