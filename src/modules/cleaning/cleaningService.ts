@@ -1,7 +1,9 @@
 import * as cvModule from '@techstark/opencv-js';
 import type { BoundingBox, CleaningOptions, TextRegion, RegionCategory, CategoryCleaningFlags } from '../../types';
 import { inpaintMIGAN } from './miganInpainting';
+import { inpaintLaMa } from './lamaInpainting';
 export { inpaintMIGAN, resetMIGANSession } from './miganInpainting';
+export { inpaintLaMa, getLaMaSession, resetLaMaSession } from './lamaInpainting';
 
 // Cached OpenCV runtime instance
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,30 +99,6 @@ export async function inpaintOpenCVTelea(
   dstRgbaMat.delete();
 }
 
-/**
- * Inpaints masked pixels using LaMa AI deep neural network engine.
- * Accepts image data and pixel-level mask.
- * Requires browser ONNX Runtime Web (`onnxruntime-web`) and a LaMa ONNX model file.
- */
-export async function inpaintLaMa(
-  imgData: ImageData,
-  _mask?: Uint8Array
-): Promise<void> {
-  const { width, height } = imgData;
-  if (width <= 0 || height <= 0) return;
-
-  // Check if browser-side ONNX Runtime Web is available in current runtime environment
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalObj = typeof window !== 'undefined' ? (window as any) : (globalThis as any);
-  const ort = globalObj?.ort || globalObj?.onnxruntime;
-
-  if (!ort || typeof ort.InferenceSession?.create !== 'function') {
-    throw new Error(
-      'LaMa AI inpainting engine is not available in the current browser runtime. ' +
-      'Browser-side LaMa inference requires ONNX Runtime Web (onnxruntime-web) and a LaMa ONNX model file.'
-    );
-  }
-}
 
 export interface TextMaskResult {
   mask: Uint8Array;
@@ -884,27 +862,24 @@ export async function cleanImageRegion(
 
   const chosenColor = parseHex(hexColor);
 
-  // SEPARATE: 1. INPAINTING / CONTEXT AREA, 2. FINAL REPLACEMENT / COMPOSITING MASK.
-  // For Brush Cleaning, create an expanded internal context mask so inpainting engines
-  // sample pristine background pixels beyond anti-aliased text fringes.
-  // The final compositing mask remains strictly the intended target (targetMask).
+  // UNIFIED PIPELINE FOR BOTH BRUSH AND RECTANGLE:
+  // 1. targetMask: Exact pixels intended for removal (brush stroke or text mask)
+  // 2. inpaintContextMask: Expanded area (2px dilation) given to inpainting engines so they have surrounding background context
+  // 3. finalCompositingMask: Strictly targetMask, ensuring pixels outside targetMask are 100% restored from original image
   const finalCompositingMask = targetMask;
-  let inpaintContextMask = targetMask;
+  const inpaintContextMask = new Uint8Array(targetW * targetH);
+  const dilationRadius = 2;
 
-  if (options.brushMask || options.isBrush) {
-    inpaintContextMask = new Uint8Array(targetW * targetH);
-    const dilationRadius = 2;
-    for (let y = 0; y < targetH; y++) {
-      for (let x = 0; x < targetW; x++) {
-        if (targetMask[y * targetW + x] > 0) {
-          for (let dy = -dilationRadius; dy <= dilationRadius; dy++) {
-            const ny = y + dy;
-            if (ny < 0 || ny >= targetH) continue;
-            for (let dx = -dilationRadius; dx <= dilationRadius; dx++) {
-              const nx = x + dx;
-              if (nx < 0 || nx >= targetW) continue;
-              inpaintContextMask[ny * targetW + nx] = 1;
-            }
+  for (let y = 0; y < targetH; y++) {
+    for (let x = 0; x < targetW; x++) {
+      if (targetMask[y * targetW + x] > 0) {
+        for (let dy = -dilationRadius; dy <= dilationRadius; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= targetH) continue;
+          for (let dx = -dilationRadius; dx <= dilationRadius; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= targetW) continue;
+            inpaintContextMask[ny * targetW + nx] = 1;
           }
         }
       }
