@@ -174,8 +174,9 @@ describe('Lightroom-Style Remove/Healing Brush Core Mechanics', () => {
       }
     }
 
-    expect(passed255Count).toBe(maskPixelCount);
-    expect(passed255Count).toBeLessThan(bbox.width * bbox.height); // Proves brush mask received, NOT bounding box filled with 1s
+    // Inpainting engine receives the expanded context mask for reference context, which is less than the total bounding box area
+    expect(passed255Count).toBeGreaterThan(maskPixelCount);
+    expect(passed255Count).toBeLessThan(bbox.width * bbox.height); // Proves pixel-level brush context mask received, NOT bounding box filled with 1s
   });
 
   it('6. Final compositing in cleanImageRegion replaces ONLY masked brush pixels and restores 100% of unmasked artwork pixels', async () => {
@@ -334,5 +335,63 @@ describe('Lightroom-Style Remove/Healing Brush Core Mechanics', () => {
     const undonePage = undoPageHistory(cleanedPage);
     expect(undonePage.cleanedUrl).toBe('data:image/png;base64,orig');
     expect(undonePage.regions[0].isCleaned).toBe(false);
+  });
+
+  it('10. Context mask for inpainting is expanded for sampling pristine context without expanding final compositing mask', async () => {
+    // Canvas: speech bubble with text near border
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const ctx = canvas.getContext('2d')!;
+
+    // Speech bubble background: white (255, 255, 255)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 100, 100);
+
+    // Black bubble border on right at x >= 80
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(80, 0, 20, 100);
+
+    // Text at (60, 40) to (70, 60)
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(60, 40, 10, 20);
+
+    const canvasUrl = canvas.toDataURL('image/png');
+    const bbox: BoundingBox = { x: 55, y: 35, width: 20, height: 30 };
+    const brushMask = new Uint8Array(20 * 30);
+
+    // Brush ONLY over text: (x: 5..14, y: 5..24) within bbox (55, 35, 20, 30) => absolute x: 60..69, y: 40..59
+    for (let y = 5; y < 25; y++) {
+      for (let x = 5; x < 15; x++) {
+        brushMask[y * 20 + x] = 1;
+      }
+    }
+
+    const options: CleaningOptions = {
+      method: 'opencv-telea',
+      padding: 0,
+      isBrush: true,
+      brushMask,
+    };
+
+    const cv = await getOpenCV();
+    const resultUrl = await cleanImageRegion(canvasUrl, bbox, options);
+    expect(resultUrl).toBeDefined();
+
+    // Verify inpaint call received dilated mask for inpainting reference
+    expect(cv.inpaint).toHaveBeenCalled();
+    const maskMat = (cv.inpaint as ReturnType<typeof vi.fn>).mock.calls[(cv.inpaint as ReturnType<typeof vi.fn>).mock.calls.length - 1][1];
+
+    let inpaintMask255Count = 0;
+    if (maskMat && maskMat.data) {
+      for (let i = 0; i < maskMat.data.length; i++) {
+        if (maskMat.data[i] === 255) inpaintMask255Count++;
+      }
+    }
+
+    // Exact brush mask count = 10 * 20 = 200
+    const userBrushPixelCount = 200;
+    // Inpaint context mask passed to inpaint engine MUST be expanded (> 200) to cover anti-aliasing edges/context
+    expect(inpaintMask255Count).toBeGreaterThan(userBrushPixelCount);
   });
 });
