@@ -11,6 +11,14 @@ export type RegionCategory = 'bubble-oval' | 'bubble-rect' | 'text-outside' | 's
 
 export type ManualTool = 'rectangle' | 'brush';
 
+export type GradientDirection = 'horizontal' | 'vertical' | 'diagonal';
+
+export interface GradientOptions {
+  startColor: string;
+  endColor: string;
+  direction: GradientDirection;
+}
+
 export interface TextRegion {
   id: string;
   bbox: BoundingBox;
@@ -41,6 +49,12 @@ export interface TextRegion {
     underline?: boolean;
     strikethrough?: boolean;
     color?: string;
+    colorMode?: 'solid' | 'gradient';
+    gradient?: {
+      startColor?: string;
+      endColor?: string;
+      direction?: GradientDirection;
+    };
     align?: 'left' | 'center' | 'right';
     vAlign?: 'top' | 'middle' | 'bottom';
     lineHeight?: number;

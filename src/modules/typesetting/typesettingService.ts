@@ -1,4 +1,4 @@
-import type { TextRegion, BoundingBox } from '../../types';
+import type { TextRegion, BoundingBox, GradientOptions } from '../../types';
 import { ensureFontLoaded } from './fontService';
 
 export interface TypesettingStyle {
@@ -13,6 +13,8 @@ export interface TypesettingStyle {
   underline: boolean;
   strikethrough: boolean;
   color: string;
+  colorMode?: 'solid' | 'gradient';
+  gradient?: GradientOptions;
   align: 'left' | 'center' | 'right';
   vAlign: 'top' | 'middle' | 'bottom';
   lineHeight: number;
@@ -38,6 +40,12 @@ export const DEFAULT_TYPESETTING_STYLE: TypesettingStyle = {
   underline: false,
   strikethrough: false,
   color: '#000000',
+  colorMode: 'solid',
+  gradient: {
+    startColor: '#000000',
+    endColor: '#ffffff',
+    direction: 'horizontal',
+  },
   align: 'center',
   vAlign: 'middle',
   lineHeight: 1.2,
@@ -78,6 +86,13 @@ export function getEffectiveTypesettingStyle(
   const bounds = getEffectiveTypesettingBounds(region);
   const padding = region.typesetting?.padding ?? DEFAULT_TYPESETTING_STYLE.padding;
 
+  const colorMode = region.typesetting?.colorMode ?? 'solid';
+  const gradient: GradientOptions = {
+    startColor: region.typesetting?.gradient?.startColor ?? '#000000',
+    endColor: region.typesetting?.gradient?.endColor ?? '#ffffff',
+    direction: region.typesetting?.gradient?.direction ?? 'horizontal',
+  };
+
   return {
     x: region.typesetting?.x ?? 0,
     y: region.typesetting?.y ?? 0,
@@ -90,6 +105,8 @@ export function getEffectiveTypesettingStyle(
     underline: region.typesetting?.underline ?? DEFAULT_TYPESETTING_STYLE.underline,
     strikethrough: region.typesetting?.strikethrough ?? DEFAULT_TYPESETTING_STYLE.strikethrough,
     color: region.typesetting?.color ?? DEFAULT_TYPESETTING_STYLE.color,
+    colorMode,
+    gradient,
     align,
     vAlign,
     lineHeight: region.typesetting?.lineHeight ?? DEFAULT_TYPESETTING_STYLE.lineHeight,
@@ -481,7 +498,40 @@ export function renderRegionTypesetting(
   ctx.save();
   const italicPrefix = style.italic ? 'italic ' : '';
   ctx.font = `${italicPrefix}${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
-  ctx.fillStyle = style.color;
+
+  // Resolve fill style (solid color or gradient)
+  let fillStyle: string | CanvasGradient = style.color;
+
+  if (style.colorMode === 'gradient' && style.gradient) {
+    let x1 = bounds.x;
+    let y1 = bounds.y;
+    let x2 = bounds.x + bounds.width;
+    let y2 = bounds.y;
+
+    if (style.gradient.direction === 'vertical') {
+      x2 = bounds.x;
+      y2 = bounds.y + bounds.height;
+    } else if (style.gradient.direction === 'diagonal') {
+      x2 = bounds.x + bounds.width;
+      y2 = bounds.y + bounds.height;
+    }
+
+    if (typeof ctx.createLinearGradient === 'function') {
+      try {
+        const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+        if (grad && typeof grad.addColorStop === 'function') {
+          grad.addColorStop(0, style.gradient.startColor);
+          grad.addColorStop(1, style.gradient.endColor);
+          fillStyle = grad;
+        }
+      } catch {
+        fillStyle = style.gradient.startColor || style.color;
+      }
+    }
+  }
+
+  ctx.fillStyle = fillStyle;
+  ctx.strokeStyle = fillStyle;
   ctx.textAlign = style.align;
   ctx.textBaseline = 'middle';
 
@@ -538,7 +588,7 @@ export function renderRegionTypesetting(
         if (typeof ctx.moveTo === 'function') ctx.moveTo(lineStartX, underlineY);
         if (typeof ctx.lineTo === 'function') ctx.lineTo(lineEndX, underlineY);
         ctx.lineWidth = lineThickness;
-        ctx.strokeStyle = style.color;
+        ctx.strokeStyle = fillStyle;
         if (typeof ctx.stroke === 'function') ctx.stroke();
       }
 
@@ -548,7 +598,7 @@ export function renderRegionTypesetting(
         if (typeof ctx.moveTo === 'function') ctx.moveTo(lineStartX, strikethroughY);
         if (typeof ctx.lineTo === 'function') ctx.lineTo(lineEndX, strikethroughY);
         ctx.lineWidth = lineThickness;
-        ctx.strokeStyle = style.color;
+        ctx.strokeStyle = fillStyle;
         if (typeof ctx.stroke === 'function') ctx.stroke();
       }
     }
