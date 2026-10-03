@@ -9,6 +9,9 @@ export interface TypesettingStyle {
   fontFamily: string;
   fontSize: number;
   fontWeight: number | string;
+  italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
   color: string;
   align: 'left' | 'center' | 'right';
   vAlign: 'top' | 'middle' | 'bottom';
@@ -31,6 +34,9 @@ export const DEFAULT_TYPESETTING_STYLE: TypesettingStyle = {
   fontFamily: 'sans-serif',
   fontSize: 16,
   fontWeight: 'normal',
+  italic: false,
+  underline: false,
+  strikethrough: false,
   color: '#000000',
   align: 'center',
   vAlign: 'middle',
@@ -80,6 +86,9 @@ export function getEffectiveTypesettingStyle(
     fontFamily: region.typesetting?.fontFamily ?? fallbackFont,
     fontSize: region.typesetting?.fontSize ?? DEFAULT_TYPESETTING_STYLE.fontSize,
     fontWeight: region.typesetting?.fontWeight ?? DEFAULT_TYPESETTING_STYLE.fontWeight,
+    italic: region.typesetting?.italic ?? DEFAULT_TYPESETTING_STYLE.italic,
+    underline: region.typesetting?.underline ?? DEFAULT_TYPESETTING_STYLE.underline,
+    strikethrough: region.typesetting?.strikethrough ?? DEFAULT_TYPESETTING_STYLE.strikethrough,
     color: region.typesetting?.color ?? DEFAULT_TYPESETTING_STYLE.color,
     align,
     vAlign,
@@ -96,20 +105,29 @@ export function wrapText(
   fontFamily: string,
   fontSize: number,
   fontWeight: number | string = 'normal',
+  italic: boolean = false,
   ctx?: CanvasRenderingContext2D | null
 ): string[] {
+  let actualItalic = italic;
+  let actualCtx = ctx;
+  if (typeof italic !== 'boolean') {
+    actualCtx = italic as unknown as CanvasRenderingContext2D;
+    actualItalic = false;
+  }
+
   const cleanText = text.trim();
   if (!cleanText) return [];
 
   // Create temporary canvas context for measurement if none provided
-  let tempCtx = ctx;
+  let tempCtx = actualCtx;
   if (!tempCtx && typeof document !== 'undefined') {
     const canvas = document.createElement('canvas');
     tempCtx = canvas.getContext('2d');
   }
 
   if (tempCtx) {
-    tempCtx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+    const italicPrefix = actualItalic ? 'italic ' : '';
+    tempCtx.font = `${italicPrefix}${fontWeight} ${fontSize}px ${fontFamily}`;
   }
 
   // Helper measure width function
@@ -160,16 +178,25 @@ export function measureTextLineWidth(
   fontSize: number,
   fontFamily: string,
   fontWeight: number | string = 'normal',
+  italic: boolean = false,
   ctx?: CanvasRenderingContext2D | null
 ): number {
   if (!str) return 0;
-  let tempCtx = ctx;
+  let actualItalic = italic;
+  let actualCtx = ctx;
+  if (typeof italic !== 'boolean') {
+    actualCtx = italic as unknown as CanvasRenderingContext2D;
+    actualItalic = false;
+  }
+
+  let tempCtx = actualCtx;
   if (!tempCtx && typeof document !== 'undefined') {
     const canvas = document.createElement('canvas');
     tempCtx = canvas.getContext('2d');
   }
   if (tempCtx) {
-    tempCtx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+    const italicPrefix = actualItalic ? 'italic ' : '';
+    tempCtx.font = `${italicPrefix}${fontWeight} ${fontSize}px ${fontFamily}`;
     const metrics = tempCtx.measureText(str);
     if (metrics && typeof metrics.width === 'number') {
       return metrics.width;
@@ -224,7 +251,7 @@ export function getRenderedTextDetails(
 
   let maxLineWidth = 0;
   for (const line of lines) {
-    const lw = measureTextLineWidth(line, fontSize, style.fontFamily, style.fontWeight, ctx);
+    const lw = measureTextLineWidth(line, fontSize, style.fontFamily, style.fontWeight, style.italic, ctx);
     if (lw > maxLineWidth) maxLineWidth = lw;
   }
 
@@ -325,7 +352,7 @@ export function calculateAutoFontSize(
   let bestLines: string[] = [];
 
   for (let fontSize = startFontSize; fontSize >= MIN_FONT_SIZE; fontSize--) {
-    const lines = wrapText(text, maxWidth, style.fontFamily, fontSize, style.fontWeight, ctx);
+    const lines = wrapText(text, maxWidth, style.fontFamily, fontSize, style.fontWeight, style.italic, ctx);
     const lineSpacing = fontSize * style.lineHeight;
     const totalHeight = lines.length * lineSpacing;
 
@@ -392,6 +419,9 @@ export function getRegionTypesettingLayout(
     userFontSize || 'auto',
     style.fontSize,
     style.fontWeight,
+    style.italic,
+    style.underline,
+    style.strikethrough,
     style.lineHeight,
     style.align,
     style.vAlign,
@@ -412,7 +442,7 @@ export function getRegionTypesettingLayout(
     lines = autoFit.lines;
   } else {
     const maxWidth = Math.max(10, bounds.width - padding * 2);
-    lines = wrapText(textToRender, maxWidth, style.fontFamily, fontSize, style.fontWeight, ctx);
+    lines = wrapText(textToRender, maxWidth, style.fontFamily, fontSize, style.fontWeight, style.italic, ctx);
   }
 
   if (typesettingLayoutCache.size >= MAX_CACHE_SIZE) {
@@ -449,7 +479,8 @@ export function renderRegionTypesetting(
   if (lines.length === 0 || fontSize <= 0) return;
 
   ctx.save();
-  ctx.font = `${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
+  const italicPrefix = style.italic ? 'italic ' : '';
+  ctx.font = `${italicPrefix}${style.fontWeight} ${fontSize}px ${style.fontFamily}`;
   ctx.fillStyle = style.color;
   ctx.textAlign = style.align;
   ctx.textBaseline = 'middle';
@@ -488,6 +519,39 @@ export function renderRegionTypesetting(
   lines.forEach((line, index) => {
     const yPos = startY + index * lineSpacing;
     ctx.fillText(line, alignX, yPos);
+
+    if (style.underline || style.strikethrough) {
+      const lineWidth = measureTextLineWidth(line, fontSize, style.fontFamily, style.fontWeight, style.italic, ctx);
+      let lineStartX = alignX;
+      if (style.align === 'center') {
+        lineStartX = alignX - lineWidth / 2;
+      } else if (style.align === 'right') {
+        lineStartX = alignX - lineWidth;
+      }
+      const lineEndX = lineStartX + lineWidth;
+
+      const lineThickness = Math.max(1, Math.round(fontSize / 15));
+
+      if (style.underline) {
+        const underlineY = yPos + fontSize * 0.38;
+        if (typeof ctx.beginPath === 'function') ctx.beginPath();
+        if (typeof ctx.moveTo === 'function') ctx.moveTo(lineStartX, underlineY);
+        if (typeof ctx.lineTo === 'function') ctx.lineTo(lineEndX, underlineY);
+        ctx.lineWidth = lineThickness;
+        ctx.strokeStyle = style.color;
+        if (typeof ctx.stroke === 'function') ctx.stroke();
+      }
+
+      if (style.strikethrough) {
+        const strikethroughY = yPos;
+        if (typeof ctx.beginPath === 'function') ctx.beginPath();
+        if (typeof ctx.moveTo === 'function') ctx.moveTo(lineStartX, strikethroughY);
+        if (typeof ctx.lineTo === 'function') ctx.lineTo(lineEndX, strikethroughY);
+        ctx.lineWidth = lineThickness;
+        ctx.strokeStyle = style.color;
+        if (typeof ctx.stroke === 'function') ctx.stroke();
+      }
+    }
   });
 
   ctx.restore();

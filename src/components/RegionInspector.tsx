@@ -18,6 +18,10 @@ import {
   RotateCcw,
   Upload,
   ShieldCheck,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import type { QcReport, QcIssue } from '../modules/qc/qcService';
@@ -323,6 +327,9 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     const currentStyle = selectedRegion
       ? getEffectiveTypesettingStyle(selectedRegion, defaultFontFamily)
       : null;
+    const isBold = currentStyle
+      ? currentStyle.fontWeight === 'bold' || currentStyle.fontWeight === '700' || currentStyle.fontWeight === 700
+      : false;
 
     const handleAutoFitSelectedRegion = () => {
       if (!selectedRegion) return;
@@ -624,6 +631,89 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                     }
                     className="w-14 bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-indigo-500"
                   />
+                </div>
+              </div>
+
+              {/* Text Formatting Controls */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400 font-medium">Text Formatting</label>
+                <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800 gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          fontWeight: isBold ? 'normal' : 'bold',
+                        },
+                      })
+                    }
+                    className={`flex-1 p-1.5 rounded flex justify-center items-center cursor-pointer transition-colors ${
+                      isBold ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                    title="Bold"
+                    aria-label="Bold"
+                  >
+                    <Bold className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          italic: !currentStyle.italic,
+                        },
+                      })
+                    }
+                    className={`flex-1 p-1.5 rounded flex justify-center items-center cursor-pointer transition-colors ${
+                      currentStyle.italic ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                    title="Italic"
+                    aria-label="Italic"
+                  >
+                    <Italic className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          underline: !currentStyle.underline,
+                        },
+                      })
+                    }
+                    className={`flex-1 p-1.5 rounded flex justify-center items-center cursor-pointer transition-colors ${
+                      currentStyle.underline ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                    title="Underline"
+                    aria-label="Underline"
+                  >
+                    <Underline className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateRegion({
+                        ...selectedRegion,
+                        typesetting: {
+                          ...selectedRegion.typesetting,
+                          strikethrough: !currentStyle.strikethrough,
+                        },
+                      })
+                    }
+                    className={`flex-1 p-1.5 rounded flex justify-center items-center cursor-pointer transition-colors ${
+                      currentStyle.strikethrough ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                    title="Strikethrough"
+                    aria-label="Strikethrough"
+                  >
+                    <Strikethrough className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
 

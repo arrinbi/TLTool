@@ -37,6 +37,9 @@ export interface TextRegion {
     fontFamily?: string;
     fontSize?: number;
     fontWeight?: number | string;
+    italic?: boolean;
+    underline?: boolean;
+    strikethrough?: boolean;
     color?: string;
     align?: 'left' | 'center' | 'right';
     vAlign?: 'top' | 'middle' | 'bottom';
