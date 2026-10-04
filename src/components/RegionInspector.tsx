@@ -22,6 +22,7 @@ import {
   Italic,
   Underline,
   Strikethrough,
+  Circle,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import type { QcReport, QcIssue } from '../modules/qc/qcService';
@@ -49,6 +50,7 @@ interface RegionInspectorProps {
   manualCategory: RegionCategory;
   onSelectManualCategory: (category: RegionCategory) => void;
   onRunOcr: () => void;
+  onRunBubbleDetection?: () => void;
   onRunOcrOnRegion?: (regionId: string) => void;
   onCleanRegion: (regionId: string, options: CleaningOptions) => void;
   onCleanAllRegions: (options: CleaningOptions) => void;
@@ -97,6 +99,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   manualCategory,
   onSelectManualCategory,
   onRunOcr,
+  onRunBubbleDetection,
   onRunOcrOnRegion,
   onCleanRegion,
   onCleanAllRegions,
@@ -1280,7 +1283,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
       <div className="p-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-indigo-400" />
-          <h2 className="font-semibold text-slate-100 text-sm">Text & Cleaning</h2>
+          <h2 className="font-semibold text-slate-100 text-sm">OCR & Cleaning</h2>
         </div>
         <button
           onClick={() => setShowLimitationsModal(true)}
@@ -1292,11 +1295,17 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
       </div>
 
       <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
-        {/* Detection Mode Selection Menu */}
+        {/* OCR / Detection Section */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Detection Mode
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+            <span>OCR & Detection</span>
+            {page.bubbles && page.bubbles.length > 0 && (
+              <span className="text-[10px] font-normal text-indigo-400">
+                {page.bubbles.length} bubble(s)
+              </span>
+            )}
           </span>
+
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -1305,26 +1314,67 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                 onRunOcr();
               }}
               disabled={page.isProcessing}
-              className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-2.5 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                 detectionMode === 'auto'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
               } disabled:opacity-50`}
+              title="Detect Text Regions & Run OCR"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${page.isProcessing ? 'animate-spin' : ''}`} />
-              <span>Automatic Detection</span>
+              <span>Detect Text</span>
             </button>
+
+            {onRunBubbleDetection ? (
+              <button
+                type="button"
+                onClick={onRunBubbleDetection}
+                disabled={page.isProcessing}
+                className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                title="Detect Speech Bubbles (creates BubbleRegions)"
+              >
+                <Circle className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Detect Bubble</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSelectDetectionMode('manual')}
+                className={`px-2.5 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                  detectionMode === 'manual'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Manual Selection</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => onSelectDetectionMode('manual')}
-              className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                 detectionMode === 'manual'
                   ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  : 'bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300'
               }`}
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Manual Selection</span>
+              <span>Manual Rectangle</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onRunOcr}
+              disabled={page.isProcessing}
+              className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              title="Explicit Re-OCR (updates existing regions)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Re-OCR</span>
             </button>
           </div>
 
@@ -1395,29 +1445,14 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
           )}
         </div>
 
-        {/* Bulk Actions */}
-        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Bulk Actions
-          </span>
-          <button
-            onClick={() => onCleanAllRegions(activeOptions)}
-            disabled={page.regions.length === 0 || page.isProcessing}
-            className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-          >
-            <Wand2 className="w-3.5 h-3.5" />
-            <span>Clean All</span>
-          </button>
-        </div>
-
-        {/* Cleaning Method Settings */}
+        {/* Cleaning Controls Section */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-3">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Cleaning Engine Options
+            Cleaning Controls
           </span>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-slate-300 font-medium">Method</label>
+            <label className="text-xs text-slate-300 font-medium">Cleaning Engine</label>
             <select
               value={cleaningMethod}
               onChange={(e) => setCleaningMethod(e.target.value as CleaningMethod)}
@@ -1458,6 +1493,16 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               className="accent-indigo-500 cursor-pointer"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => onCleanAllRegions(activeOptions)}
+            disabled={page.regions.length === 0 || page.isProcessing}
+            className="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm mt-1"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>Clean All</span>
+          </button>
         </div>
 
         {/* Selected Region Editor */}
