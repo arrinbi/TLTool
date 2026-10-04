@@ -58,10 +58,11 @@ export const HeaderToolbar: React.FC<HeaderToolbarProps> = ({
       {/* Workflow Stage Pipeline Indicators */}
       <nav className="hidden md:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
         {[
-          { id: 'ocr-cleaning', label: '1. OCR & Cleaning', active: true },
-          { id: 'translation', label: '2. Translation', active: true },
-          { id: 'typesetting', label: '3. Typesetting', active: true },
-          { id: 'qc', label: '4. QC & Export', active: true },
+          { id: 'ocr', label: '1. OCR', active: true },
+          { id: 'cleaning', label: '2. Cleaning', active: true },
+          { id: 'translation', label: '3. Translation', active: true },
+          { id: 'typesetting', label: '4. Typesetting', active: true },
+          { id: 'qc', label: '5. QC & Export', active: true },
         ].map((stage) => (
           <button
             key={stage.id}

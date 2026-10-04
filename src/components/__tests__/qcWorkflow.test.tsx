@@ -124,7 +124,7 @@ describe('Quality Control (QC) Service & Workflow', () => {
         expect(screen.getByText('Sample_Manhwa_Page_01.png')).toBeInTheDocument();
       });
 
-      const qcStageBtn = screen.getByText('4. QC & Export');
+      const qcStageBtn = screen.getByText('5. QC & Export');
       expect(qcStageBtn).toBeInTheDocument();
 
       fireEvent.click(qcStageBtn);
@@ -142,7 +142,7 @@ describe('Quality Control (QC) Service & Workflow', () => {
         expect(screen.getByText('Sample_Manhwa_Page_01.png')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByText('4. QC & Export'));
+      fireEvent.click(screen.getByText('5. QC & Export'));
 
       await waitFor(() => {
         expect(screen.getByText('Technical Validation Check')).toBeInTheDocument();

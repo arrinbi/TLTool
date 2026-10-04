@@ -67,7 +67,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   displayHeight,
   regions,
   selectedRegionId,
-  activeStage = 'ocr-cleaning',
+  activeStage = 'ocr',
   onSelectRegion,
   onUpdateRegion,
   onAddRegion,
