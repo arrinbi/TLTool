@@ -353,7 +353,7 @@ export function App() {
         (r) => r.bbox && r.bbox.width > 0 && r.bbox.height > 0
       );
 
-      let autoRegions = validDetected.map((r) => ({
+      let autoRegions: TextRegion[] = validDetected.map((r) => ({
         ...r,
         text: r.text || '',
         isManual: false,
