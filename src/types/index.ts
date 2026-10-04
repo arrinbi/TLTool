@@ -13,6 +13,15 @@ export type ManualTool = 'rectangle' | 'brush';
 
 export type GradientDirection = 'horizontal' | 'vertical' | 'diagonal';
 
+export type BubbleShape = 'rectangle' | 'oval' | 'circle';
+
+export interface BubbleRegion {
+  id: string;
+  shape: BubbleShape;
+  bbox: BoundingBox;
+  confidence?: number;
+}
+
 export interface GradientOptions {
   startColor: string;
   endColor: string;
@@ -28,6 +37,7 @@ export interface TextRegion {
   isManual?: boolean;
   source?: 'manual' | 'auto';
   category?: RegionCategory;
+  bubbleId?: string;
   cleaningMethod?: CleaningMethod;
   originalText?: string;
   brushMask?: Uint8Array;
@@ -74,6 +84,7 @@ export interface HistoryEntry {
   width?: number;
   height?: number;
   regions: TextRegion[];
+  bubbles?: BubbleRegion[];
   description: string;
 }
 
@@ -89,6 +100,7 @@ export interface ManhwaPage {
   originalWidth?: number;  // Initial pristine uploaded image width
   originalHeight?: number; // Initial pristine uploaded image height
   regions: TextRegion[];
+  bubbles?: BubbleRegion[];
   history: HistoryEntry[];
   historyIndex: number; // Index into history array (-1 for original base state)
   isProcessing: boolean;

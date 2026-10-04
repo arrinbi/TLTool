@@ -1,5 +1,5 @@
 import { createWorker, PSM } from 'tesseract.js';
-import type { TextRegion, BoundingBox, RegionCategory } from '../../types';
+import type { TextRegion, BoundingBox, RegionCategory, BubbleRegion, BubbleShape } from '../../types';
 
 export interface OcrProgress {
   status: string;
@@ -383,6 +383,7 @@ export function clusterBoxes(
       confidence: Math.round(avgConfidence),
       category: classifyRegionCategory(combinedBbox, combinedText),
       isCleaned: false,
+      source: 'auto',
     };
 
     if (isValidTextRegion(region)) {
@@ -447,6 +448,204 @@ export async function prepareCanvasFromSource(
   const ctx = canvas.getContext('2d');
   if (ctx) ctx.drawImage(img, 0, 0);
   return canvas;
+}
+
+/**
+ * Detect speech bubble regions in an image independent from text recognition.
+ * Bubble detection identifies bubble areas (rectangle, oval, circle) without automatically creating TextRegions.
+ */
+export async function detectBubbleRegions(
+  imageSource: string | HTMLImageElement | HTMLCanvasElement
+): Promise<BubbleRegion[]> {
+  try {
+    const sourceCanvas = await prepareCanvasFromSource(imageSource);
+    const ctx = sourceCanvas.getContext('2d');
+    if (!ctx) return [];
+
+    const { width, height } = sourceCanvas;
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const data = imgData.data;
+
+    // Detect uniform white/light regions (speech bubble candidates)
+    const visited = new Uint8Array(width * height);
+    const bubbles: BubbleRegion[] = [];
+
+    // Step down resolution for fast scanning
+    const step = 4;
+    for (let y = step; y < height - step; y += step) {
+      for (let x = step; x < width - step; x += step) {
+        const idx = (y * width + x) * 4;
+        const pos = y * width + x;
+        if (visited[pos]) continue;
+
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+        // Speech bubble interior candidate pixel (high luminance, low saturation)
+        if (lum > 220 && Math.max(r, g, b) - Math.min(r, g, b) < 25) {
+          // BFS to measure bounding box of light patch
+          let minX = x, maxX = x, minY = y, maxY = y;
+          const queue = [pos];
+          visited[pos] = 1;
+
+          let count = 0;
+          let qHead = 0;
+          while (qHead < queue.length && count < 50000) {
+            const curr = queue[qHead++];
+            count++;
+            const cx = curr % width;
+            const cy = Math.floor(curr / width);
+
+            if (cx < minX) minX = cx;
+            if (cx > maxX) maxX = cx;
+            if (cy < minY) minY = cy;
+            if (cy > maxY) maxY = cy;
+
+            const nbs = [
+              [cx + step, cy],
+              [cx - step, cy],
+              [cx, cy + step],
+              [cx, cy - step],
+            ];
+
+            for (const [nx, ny] of nbs) {
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const nPos = ny * width + nx;
+                if (!visited[nPos]) {
+                  const nIdx = nPos * 4;
+                  const nr = data[nIdx];
+                  const ng = data[nIdx + 1];
+                  const nb = data[nIdx + 2];
+                  const nLum = 0.299 * nr + 0.587 * ng + 0.114 * nb;
+
+                  if (nLum > 200 && Math.max(nr, ng, nb) - Math.min(nr, ng, nb) < 30) {
+                    visited[nPos] = 1;
+                    queue.push(nPos);
+                  }
+                }
+              }
+            }
+          }
+
+          const bWidth = maxX - minX + 1;
+          const bHeight = maxY - minY + 1;
+
+          // Require reasonable speech bubble dimensions (e.g. min 30x20, max 90% page)
+          if (
+            bWidth >= 30 &&
+            bHeight >= 20 &&
+            bWidth < width * 0.9 &&
+            bHeight < height * 0.9 &&
+            count >= 20
+          ) {
+            const aspectRatio = bWidth / Math.max(1, bHeight);
+            let shape: BubbleShape = 'oval';
+            if (aspectRatio > 0.85 && aspectRatio < 1.15) {
+              shape = 'circle';
+            } else if (aspectRatio >= 2.2 || aspectRatio <= 0.45) {
+              shape = 'rectangle';
+            }
+
+            const bbox: BoundingBox = {
+              x: minX,
+              y: minY,
+              width: bWidth,
+              height: bHeight,
+            };
+
+            // Avoid duplicate overlapping bubbles
+            const isDuplicate = bubbles.some(
+              (b) => computeOverlapRatio(b.bbox, bbox) > 0.4
+            );
+
+            if (!isDuplicate) {
+              bubbles.push({
+                id: `bubble-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                shape,
+                bbox,
+                confidence: 90,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return bubbles;
+  } catch (err) {
+    console.warn('Bubble detection error:', err);
+    return [];
+  }
+}
+
+/**
+ * Associate text regions with speech bubbles when bounding boxes overlap.
+ */
+export function associateTextWithBubbles(
+  regions: TextRegion[],
+  bubbles: BubbleRegion[]
+): TextRegion[] {
+  if (bubbles.length === 0) return regions;
+
+  return regions.map((region) => {
+    const matchingBubble = bubbles.find(
+      (b) => computeOverlapRatio(region.bbox, b.bbox) > 0.3
+    );
+    if (matchingBubble) {
+      return {
+        ...region,
+        bubbleId: matchingBubble.id,
+      };
+    }
+    return region;
+  });
+}
+
+/**
+ * Deduplicate or update text regions when running Re-OCR or new detection.
+ * Stable region IDs are updated with new text/confidence or replaced when spatially overlapping,
+ * preventing duplicate regions from accumulating on the same area.
+ */
+export function deduplicateOrUpdateRegions(
+  existingRegions: TextRegion[],
+  newRegions: TextRegion[],
+  overlapThreshold: number = 0.45
+): TextRegion[] {
+  const result = [...existingRegions];
+
+  for (const candidate of newRegions) {
+    let matchedIndex = -1;
+
+    // First check exact ID match
+    matchedIndex = result.findIndex((r) => r.id === candidate.id);
+
+    // If no exact ID match, check spatial overlap
+    if (matchedIndex < 0) {
+      matchedIndex = result.findIndex(
+        (r) => computeOverlapRatio(r.bbox, candidate.bbox) >= overlapThreshold
+      );
+    }
+
+    if (matchedIndex >= 0) {
+      // Update existing region in-place while preserving region ID, cleaning state, and manual flags
+      const existing = result[matchedIndex];
+      result[matchedIndex] = {
+        ...existing,
+        text: candidate.text || existing.text,
+        confidence: candidate.confidence || existing.confidence,
+        bbox: candidate.bbox || existing.bbox,
+        category: candidate.category || existing.category,
+        bubbleId: candidate.bubbleId || existing.bubbleId,
+      };
+    } else {
+      // Append non-duplicate new region
+      result.push(candidate);
+    }
+  }
+
+  return result;
 }
 
 /**

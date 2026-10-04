@@ -14,7 +14,13 @@ import { PageManager } from './components/PageManager';
 import { MainWorkspace } from './components/MainWorkspace';
 import { RegionInspector } from './components/RegionInspector';
 import { AiSettingsModal } from './components/AiSettingsModal';
-import { detectTextRegions, createOcrWorker } from './modules/ocr/ocrService';
+import {
+  detectTextRegions,
+  detectBubbleRegions,
+  associateTextWithBubbles,
+  deduplicateOrUpdateRegions,
+  createOcrWorker,
+} from './modules/ocr/ocrService';
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
@@ -174,6 +180,7 @@ export function App() {
               originalWidth: 600,
               originalHeight: 900,
               regions: [],
+              bubbles: [],
               history: [],
               historyIndex: -1,
               isProcessing: false,
@@ -282,6 +289,7 @@ export function App() {
         originalWidth: imgWidth,
         originalHeight: imgHeight,
         regions: [],
+        bubbles: [],
         history: [],
         historyIndex: -1,
         isProcessing: false,
@@ -296,7 +304,39 @@ export function App() {
     }
   }, []);
 
-  // Run OCR on page
+  // Run Bubble Detection on page (creates BubbleRegions without creating TextRegions)
+  const runBubbleDetectionOnPage = async (pageId: string, imageSource: string) => {
+    setPages((prev) =>
+      prev.map((p) =>
+        p.id === pageId ? { ...p, isProcessing: true, processingMessage: 'Detecting speech bubbles...' } : p
+      )
+    );
+
+    try {
+      const detectedBubbles = await detectBubbleRegions(imageSource);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== pageId) return p;
+          const updatedRegions = associateTextWithBubbles(p.regions, detectedBubbles);
+          return {
+            ...p,
+            bubbles: detectedBubbles,
+            regions: updatedRegions,
+          };
+        })
+      );
+    } catch (err) {
+      console.error('Failed to detect bubbles:', err);
+    } finally {
+      setPages((prev) =>
+        prev.map((p) =>
+          p.id === pageId ? { ...p, isProcessing: false, processingMessage: undefined } : p
+        )
+      );
+    }
+  };
+
+  // Run OCR on page (uses deduplicateOrUpdateRegions to prevent duplicate regions)
   const runTextDetectionOnPage = async (pageId: string, imageSource: string) => {
     setPages((prev) =>
       prev.map((p) =>
@@ -305,25 +345,37 @@ export function App() {
     );
 
     try {
+      const currentPage = pages.find((p) => p.id === pageId);
+      const existingBubbles = currentPage?.bubbles || [];
+
       const detected = await detectTextRegions(imageSource);
       const validDetected = detected.filter(
         (r) => r.bbox && r.bbox.width > 0 && r.bbox.height > 0
       );
 
-      const autoRegions = validDetected.map((r) => ({
+      let autoRegions = validDetected.map((r) => ({
         ...r,
         text: r.text || '',
         isManual: false,
         source: 'auto' as const,
       }));
 
+      if (existingBubbles.length > 0) {
+        autoRegions = associateTextWithBubbles(autoRegions, existingBubbles);
+      }
+
       setPages((prev) =>
         prev.map((p) => {
           if (p.id !== pageId) return p;
           const existingManual = p.regions.filter((r) => r.isManual || r.source === 'manual');
+          const existingAuto = p.regions.filter((r) => !r.isManual && r.source !== 'manual');
+
+          // Deduplicate/update new auto regions against existing auto regions
+          const mergedAuto = deduplicateOrUpdateRegions(existingAuto, autoRegions);
+
           return {
             ...p,
-            regions: [...existingManual, ...autoRegions],
+            regions: [...existingManual, ...mergedAuto],
           };
         })
       );
@@ -617,7 +669,7 @@ export function App() {
     }
   }, [selectedPageId, selectedRegionId]);
 
-  // Clean single region
+  // Clean single region - strictly modifies cleaned image and region cleaning state without modifying OCR text or running OCR
   const handleCleanRegion = useCallback(async (regionId: string, options: CleaningOptions) => {
     if (!selectedPage) return;
     const targetRegion = selectedPage.regions.find((r) => r.id === regionId);
@@ -668,7 +720,7 @@ export function App() {
     }
   }, [selectedPage, selectedRegionId]);
 
-  // Clean all regions in pass
+  // Clean all regions - strictly modifies cleaned image and region cleaning state without modifying OCR text or running OCR
   const handleCleanAllRegions = useCallback(async (options: CleaningOptions) => {
     if (!selectedPage || selectedPage.regions.length === 0) return;
 
@@ -1079,6 +1131,13 @@ export function App() {
           onRunOcr={() =>
             selectedPage &&
             runTextDetectionOnPage(
+              selectedPage.id,
+              selectedPage.croppedUrl || selectedPage.originalUrl
+            )
+          }
+          onRunBubbleDetection={() =>
+            selectedPage &&
+            runBubbleDetectionOnPage(
               selectedPage.id,
               selectedPage.croppedUrl || selectedPage.originalUrl
             )
