@@ -28,6 +28,7 @@ interface RegionOverlayProps {
       brushSize?: number;
     }
   ) => void;
+  onEraseMask?: (points: Array<{ x: number; y: number }>, size: number) => void;
   onDeleteRegion: (id: string) => void;
   isDrawingMode: boolean;
   manualTool?: ManualTool;
@@ -71,6 +72,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   onSelectRegion,
   onUpdateRegion,
   onAddRegion,
+  onEraseMask,
   isDrawingMode,
   manualTool = 'rectangle',
   brushSize = 15,
@@ -80,6 +82,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const typesettingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const dragRafId = useRef<number | null>(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -104,6 +107,71 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
       }
     };
   }, []);
+
+  // Render Pixel-Exact Mask Canvas Overlay for Uncleaned Brush/Eraser Regions
+  useEffect(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas || !displayWidth || !displayHeight) return;
+
+    if (canvas.width !== displayWidth) {
+      canvas.width = displayWidth;
+    }
+    if (canvas.height !== displayHeight) {
+      canvas.height = displayHeight;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx || typeof ctx.createImageData !== 'function') return;
+
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+    if (activeStage === 'typesetting' || activeStage === 'qc') return;
+
+    for (const region of regions) {
+      if (region.isCleaned || !region.brushMask) continue;
+
+      const isSelected = region.id === selectedRegionId;
+      const rW = region.bbox.width;
+      const rH = region.bbox.height;
+      if (rW <= 0 || rH <= 0) continue;
+
+      const imgData = ctx.createImageData(rW, rH);
+      const data = imgData.data;
+      const mask = region.brushMask;
+
+      for (let i = 0; i < mask.length; i++) {
+        if (mask[i]) {
+          const idx = i * 4;
+          if (isSelected) {
+            data[idx] = 129;     // R
+            data[idx + 1] = 140; // G
+            data[idx + 2] = 248; // B
+            data[idx + 3] = 140; // Alpha
+          } else {
+            data[idx] = 168;     // R
+            data[idx + 1] = 85;  // G
+            data[idx + 2] = 247; // B
+            data[idx + 3] = 110; // Alpha
+          }
+        }
+      }
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = rW;
+      tempCanvas.height = rH;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        tempCtx.putImageData(imgData, 0, 0);
+        ctx.drawImage(
+          tempCanvas,
+          region.bbox.x * scaleX,
+          region.bbox.y * scaleY,
+          region.bbox.width * scaleX,
+          region.bbox.height * scaleY
+        );
+      }
+    }
+  }, [regions, selectedRegionId, displayWidth, displayHeight, activeStage, scaleX, scaleY]);
 
   // Render Typesetting Canvas Overlay
   useEffect(() => {
@@ -164,7 +232,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
       setIsDrawing(true);
       const imgPos = pointerToImage(e);
 
-      if (manualTool === 'brush') {
+      if (manualTool === 'brush' || manualTool === 'eraser') {
         setBrushPoints([imgPos]);
       } else {
         setDrawStart(imgPos);
@@ -264,7 +332,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
 
     if (!isDrawing) return;
 
-    if (manualTool === 'brush') {
+    if (manualTool === 'brush' || manualTool === 'eraser') {
       setBrushPoints((prev) => [...prev, imgPos]);
     } else {
       setDrawCurrent(imgPos);
@@ -322,7 +390,13 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         // Ignore fallback
       }
 
-      if (manualTool === 'brush') {
+      if (manualTool === 'eraser') {
+        const currentPos = pointerToImage(e);
+        const points = [...brushPoints, currentPos];
+        if (points.length > 0 && onEraseMask) {
+          onEraseMask(points, brushSize);
+        }
+      } else if (manualTool === 'brush') {
         const currentPos = pointerToImage(e);
         const points = [...brushPoints, currentPos];
 
@@ -405,6 +479,20 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         transform: 'translateZ(0)',
       }}
     >
+      {/* Pixel-Exact Mask Canvas Overlay */}
+      {activeStage !== 'typesetting' && activeStage !== 'qc' && (
+        <canvas
+          ref={maskCanvasRef}
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{
+            width: displayWidth,
+            height: displayHeight,
+            willChange: 'transform',
+            transform: 'translateZ(0)',
+          }}
+        />
+      )}
+
       {/* Non-Destructive Typesetting Canvas Overlay */}
       {(activeStage === 'typesetting' || activeStage === 'qc') && (
         <canvas
@@ -730,6 +818,34 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
             }
             stroke="rgba(56, 189, 248, 0.6)"
             strokeWidth={Math.max(2, brushSize * scaleX)}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      )}
+
+      {/* Currently Drawing Stroke Preview (Eraser) */}
+      {isDrawing && manualTool === 'eraser' && brushPoints.length > 0 && (
+        <svg
+          className="absolute inset-0 pointer-events-none z-20"
+          style={{ width: displayWidth, height: displayHeight }}
+        >
+          <path
+            d={
+              brushPoints.length === 1
+                ? `M ${brushPoints[0].x * scaleX} ${brushPoints[0].y * scaleY} L ${
+                    brushPoints[0].x * scaleX
+                  } ${brushPoints[0].y * scaleY}`
+                : `M ${brushPoints[0].x * scaleX} ${brushPoints[0].y * scaleY} ` +
+                  brushPoints
+                    .slice(1)
+                    .map((p) => `L ${p.x * scaleX} ${p.y * scaleY}`)
+                    .join(' ')
+            }
+            stroke="rgba(244, 63, 94, 0.8)"
+            strokeWidth={Math.max(2, brushSize * scaleX)}
+            strokeDasharray="4,4"
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"

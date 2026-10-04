@@ -9,7 +9,7 @@ export type CleaningMethod = 'smart-fill' | 'solid-white' | 'border-sample' | 'b
 
 export type RegionCategory = 'bubble-oval' | 'bubble-rect' | 'text-outside' | 'sfx';
 
-export type ManualTool = 'rectangle' | 'brush';
+export type ManualTool = 'rectangle' | 'brush' | 'eraser';
 
 export type GradientDirection = 'horizontal' | 'vertical' | 'diagonal';
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles, Square, Paintbrush, Crop, Check, X } from 'lucide-react';
+import { Eye, SplitSquareVertical, Columns, Maximize2, ZoomIn, ZoomOut, RotateCcw, Plus, MousePointer, Sparkles, Square, Paintbrush, Eraser, Crop, Check, X } from 'lucide-react';
 import type { ManhwaPage, TextRegion, WorkspaceViewMode, BoundingBox, RegionCategory, ManualTool, CropRect, WorkflowStage } from '../types';
 import type { QcReport } from '../modules/qc/qcService';
 import { RegionOverlay } from './RegionOverlay';
@@ -21,6 +21,7 @@ interface MainWorkspaceProps {
       brushSize?: number;
     }
   ) => void;
+  onEraseMask?: (points: Array<{ x: number; y: number }>, size: number) => void;
   onDeleteRegion: (id: string) => void;
   detectionMode: 'auto' | 'manual';
   onSelectDetectionMode: (mode: 'auto' | 'manual') => void;
@@ -52,6 +53,7 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
   onSelectRegion,
   onUpdateRegion,
   onAddRegion,
+  onEraseMask,
   onDeleteRegion,
   detectionMode,
   onSelectDetectionMode,
@@ -277,7 +279,7 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
           {/* Tool & Category Selector when in Manual Selection Mode (Stage 1 or Stage 2) */}
           {(activeStage === 'ocr' || activeStage === 'cleaning') && (detectionMode === 'manual' || isDrawingMode) && (
             <>
-              {/* Manual Selection Tool Toggle: Rectangle vs Brush */}
+              {/* Manual Selection Tool Toggle: Rectangle vs Brush vs Eraser */}
               <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
                 <button
                   onClick={() => onSelectManualTool?.('rectangle')}
@@ -303,10 +305,22 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
                   <Paintbrush className="w-3.5 h-3.5" />
                   <span>Brush</span>
                 </button>
+                <button
+                  onClick={() => onSelectManualTool?.('eraser')}
+                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                    manualTool === 'eraser'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Eraser Selection Tool"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                  <span>Eraser</span>
+                </button>
               </div>
 
-              {/* Brush Size Slider when Brush mode active */}
-              {manualTool === 'brush' && (
+              {/* Brush / Eraser Size Slider when Brush or Eraser mode active */}
+              {(manualTool === 'brush' || manualTool === 'eraser') && (
                 <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
                   <span className="text-slate-400 text-[11px]">Size:</span>
                   <input
@@ -454,6 +468,7 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
                 onSelectRegion={onSelectRegion}
                 onUpdateRegion={onUpdateRegion}
                 onAddRegion={onAddRegion}
+                onEraseMask={onEraseMask}
                 onDeleteRegion={onDeleteRegion}
                 isDrawingMode={isDrawingMode}
                 manualTool={manualTool}
