@@ -1345,6 +1345,69 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
               />
             </div>
 
+            {/* Selection Tool Picker in Cleaning Studio */}
+            <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+              <label className="text-xs text-slate-300 font-medium">Mask Selection Tool</label>
+              <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => onSelectManualTool?.('rectangle')}
+                  className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                    manualTool === 'rectangle'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Rectangle Tool"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>Rect</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectManualTool?.('brush')}
+                  className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                    manualTool === 'brush'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Brush Tool"
+                >
+                  <Paintbrush className="w-3.5 h-3.5" />
+                  <span>Brush</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectManualTool?.('eraser')}
+                  className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                    manualTool === 'eraser'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Eraser Tool"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                  <span>Eraser</span>
+                </button>
+              </div>
+
+              {(manualTool === 'brush' || manualTool === 'eraser') && (
+                <div className="flex flex-col gap-1 mt-1">
+                  <div className="flex justify-between text-xs text-slate-300 font-medium">
+                    <span>{manualTool === 'eraser' ? 'Eraser Size' : 'Brush Size'}</span>
+                    <span className="text-slate-400">{brushSize} px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="5"
+                    max="50"
+                    value={brushSize}
+                    onChange={(e) => onSelectBrushSize?.(Number(e.target.value))}
+                    className="accent-indigo-500 cursor-pointer"
+                  />
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() => onCleanAllRegions(activeOptions)}
@@ -1596,23 +1659,23 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
             <div className="flex flex-col gap-2 mt-1 pt-2 border-t border-slate-800/80">
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-slate-300 font-medium">Manual Selection Tool</label>
-                <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
                   <button
                     type="button"
                     onClick={() => onSelectManualTool?.('rectangle')}
-                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
                       manualTool === 'rectangle'
                         ? 'bg-indigo-600 text-white shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Square className="w-3.5 h-3.5" />
-                    <span>Rectangle</span>
+                    <span>Rect</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => onSelectManualTool?.('brush')}
-                    className={`px-2 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
                       manualTool === 'brush'
                         ? 'bg-indigo-600 text-white shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -1621,13 +1684,25 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                     <Paintbrush className="w-3.5 h-3.5" />
                     <span>Brush</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => onSelectManualTool?.('eraser')}
+                    className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
+                      manualTool === 'eraser'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Eraser className="w-3.5 h-3.5" />
+                    <span>Eraser</span>
+                  </button>
                 </div>
               </div>
 
-              {manualTool === 'brush' && (
+              {(manualTool === 'brush' || manualTool === 'eraser') && (
                 <div className="flex flex-col gap-1 mt-1">
                   <div className="flex justify-between text-xs text-slate-300 font-medium">
-                    <span>Brush Size</span>
+                    <span>{manualTool === 'eraser' ? 'Eraser Size' : 'Brush Size'}</span>
                     <span className="text-slate-400">{brushSize} px</span>
                   </div>
                   <input

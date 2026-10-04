@@ -24,6 +24,7 @@ import {
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
+import { subtractEraserFromRegion, mergeBrushStrokeToRegion } from './utils/brushUtils';
 
 import type { AiConfig } from './modules/ai/aiTypes';
 import { loadAiConfig, saveAiConfig } from './modules/ai/aiTypes';
@@ -570,6 +571,36 @@ export function App() {
     }
   }, [selectedPage, aiConfig]);
 
+  // Eraser Mask Handler: Subtracts eraser stroke from region mask without deleting TextRegions, without modifying text, and without running OCR
+  const handleEraseMask = useCallback(
+    (points: Array<{ x: number; y: number }>, size: number) => {
+      if (!selectedPageId || points.length === 0) return;
+      const targetPage = pages.find((p) => p.id === selectedPageId);
+      if (!targetPage) return;
+
+      const updatedRegions = targetPage.regions.map((region) => {
+        if (region.isCleaned) return region;
+        if (selectedRegionId && region.id !== selectedRegionId) return region;
+
+        return subtractEraserFromRegion(
+          region,
+          points,
+          size,
+          targetPage.width,
+          targetPage.height
+        );
+      });
+
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== selectedPageId) return p;
+          return { ...p, regions: updatedRegions };
+        })
+      );
+    },
+    [selectedPageId, selectedRegionId, pages]
+  );
+
   // Region Operations
   const handleUpdateRegion = useCallback((updatedRegion: TextRegion) => {
     if (!selectedPageId) return;
@@ -598,40 +629,57 @@ export function App() {
       if (!targetPage) return;
 
       if (activeStage === 'cleaning') {
-        // In Cleaning Stage, drawing a manual selection performs cleaning on that area directly
-        // without creating a new TextRegion or modifying the OCR dataset.
-        setPages((prev) =>
-          prev.map((p) => (p.id === targetPage.id ? { ...p, isProcessing: true } : p))
-        );
-        try {
-          const effectiveOptions: CleaningOptions = {
-            method: 'opencv-telea',
-            padding: 2,
-            isManualRegion: true,
-            category: category || 'bubble-oval',
-            brushMask: extra?.brushMask,
-            isBrush: extra?.isBrush,
-            brushPoints: extra?.brushPoints,
-            brushSize: extra?.brushSize,
-          };
-          const newCleanedUrl = await cleanImageRegion(targetPage.cleanedUrl, bbox, effectiveOptions);
-          setPages((prev) =>
-            prev.map((p) => {
-              if (p.id !== targetPage.id) return p;
-              return pushPageHistory(
-                { ...p, isProcessing: false },
-                newCleanedUrl,
-                p.regions,
-                'Clean manual selection area'
-              );
-            })
-          );
-        } catch (err) {
-          console.error('Cleaning failed:', err);
-          setPages((prev) =>
-            prev.map((p) => (p.id === targetPage.id ? { ...p, isProcessing: false } : p))
-          );
+        // In Cleaning Stage, drawing a manual selection creates or modifies an uncleaned TextRegion
+        // without running OCR or bubble detection.
+        if (extra?.isBrush && extra.brushPoints && selectedRegionId) {
+          const selectedRegion = targetPage.regions.find((r) => r.id === selectedRegionId);
+          if (selectedRegion && !selectedRegion.isCleaned) {
+            const merged = mergeBrushStrokeToRegion(
+              selectedRegion,
+              extra.brushPoints,
+              extra.brushSize || brushSize,
+              targetPage.width,
+              targetPage.height
+            );
+            setPages((prev) =>
+              prev.map((p) => {
+                if (p.id !== targetPage.id) return p;
+                return {
+                  ...p,
+                  regions: p.regions.map((r) => (r.id === selectedRegionId ? merged : r)),
+                };
+              })
+            );
+            return;
+          }
         }
+
+        const pageId = targetPage.id;
+        const newRegion: TextRegion = {
+          id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          bbox,
+          text: '',
+          confidence: 100,
+          isCleaned: false,
+          isManual: true,
+          source: 'manual',
+          category: category || manualCategory,
+          brushMask: extra?.brushMask,
+          isBrush: extra?.isBrush,
+          brushPoints: extra?.brushPoints,
+          brushSize: extra?.brushSize,
+        };
+
+        setPages((prev) =>
+          prev.map((p) => {
+            if (p.id !== pageId) return p;
+            return {
+              ...p,
+              regions: [...p.regions, newRegion],
+            };
+          })
+        );
+        setSelectedRegionId(newRegion.id);
         return;
       }
 
@@ -645,7 +693,7 @@ export function App() {
         isCleaned: false,
         isManual: true,
         source: 'manual',
-        category: category || 'bubble-oval',
+        category: category || manualCategory,
         brushMask: extra?.brushMask,
         isBrush: extra?.isBrush,
         brushPoints: extra?.brushPoints,
@@ -692,7 +740,7 @@ export function App() {
         );
       }
     },
-    [selectedPageId, pages, aiConfig, activeStage]
+    [selectedPageId, pages, aiConfig, activeStage, manualCategory, brushSize, selectedRegionId]
   );
 
   const handleDeleteRegion = useCallback((regionId: string) => {
@@ -1121,6 +1169,7 @@ export function App() {
           onSelectRegion={setSelectedRegionId}
           onUpdateRegion={handleUpdateRegion}
           onAddRegion={handleAddRegion}
+          onEraseMask={handleEraseMask}
           onDeleteRegion={handleDeleteRegion}
           detectionMode={detectionMode}
           onSelectDetectionMode={handleSelectDetectionMode}
