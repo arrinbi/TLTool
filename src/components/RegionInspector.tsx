@@ -7,7 +7,6 @@ import {
   Info,
   Wand2,
   X,
-  Plus,
   Square,
   Paintbrush,
   Languages,
@@ -22,7 +21,6 @@ import {
   Italic,
   Underline,
   Strikethrough,
-  Circle,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
 import type { QcReport, QcIssue } from '../modules/qc/qcService';
@@ -90,16 +88,16 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onSelectRegion,
   onUpdateRegion,
   onDeleteRegion,
-  detectionMode,
-  onSelectDetectionMode,
+  detectionMode: _detectionMode,
+  onSelectDetectionMode: _onSelectDetectionMode,
   manualTool = 'rectangle',
   onSelectManualTool,
   brushSize = 15,
   onSelectBrushSize,
-  manualCategory,
-  onSelectManualCategory,
+  manualCategory: _manualCategory,
+  onSelectManualCategory: _onSelectManualCategory,
   onRunOcr,
-  onRunBubbleDetection,
+  onRunBubbleDetection: _onRunBubbleDetection,
   onRunOcrOnRegion,
   onCleanRegion,
   onCleanAllRegions,
@@ -1559,25 +1557,25 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
     );
   }
 
-  // STAGE 1: OCR & DETECTION PANEL (DEFAULT)
+  // STAGE 1: OCR STUDIO PANEL (DEFAULT)
   return (
     <aside className="w-full lg:w-80 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full shrink-0">
       {/* Header */}
       <div className="p-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-indigo-400" />
-          <h2 className="font-semibold text-slate-100 text-sm">OCR & Detection</h2>
+          <h2 className="font-semibold text-slate-100 text-sm">OCR Studio</h2>
         </div>
       </div>
 
       <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
-        {/* OCR / Detection Section */}
+        {/* OCR Actions Section */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-            <span>Detection & Recognition</span>
-            {page.bubbles && page.bubbles.length > 0 && (
+            <span>OCR Actions</span>
+            {page.regions && page.regions.length > 0 && (
               <span className="text-[10px] font-normal text-indigo-400">
-                {page.bubbles.length} bubble(s)
+                {page.regions.length} region(s)
               </span>
             )}
           </span>
@@ -1585,152 +1583,26 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => {
-                onSelectDetectionMode('auto');
-                onRunOcr();
-              }}
+              onClick={onRunOcr}
               disabled={page.isProcessing}
-              className={`px-2.5 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                detectionMode === 'auto'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-              } disabled:opacity-50`}
-              title="Detect Text Regions & Run OCR"
+              className="px-2.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
+              title="Run Automatic OCR Recognition"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${page.isProcessing ? 'animate-spin' : ''}`} />
-              <span>Detect Text</span>
-            </button>
-
-            {onRunBubbleDetection ? (
-              <button
-                type="button"
-                onClick={onRunBubbleDetection}
-                disabled={page.isProcessing}
-                className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                title="Detect Speech Bubbles (creates BubbleRegions)"
-              >
-                <Circle className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Detect Bubble</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onSelectDetectionMode('manual')}
-                className={`px-2.5 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                  detectionMode === 'manual'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                }`}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Manual Selection</span>
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => onSelectDetectionMode('manual')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                detectionMode === 'manual'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300'
-              }`}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Manual Rectangle</span>
+              <Sparkles className={`w-3.5 h-3.5 ${page.isProcessing ? 'animate-spin' : ''}`} />
+              <span>Automatic OCR</span>
             </button>
 
             <button
               type="button"
               onClick={onRunOcr}
               disabled={page.isProcessing}
-              className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               title="Explicit Re-OCR (updates existing regions)"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
               <span>Re-OCR</span>
             </button>
           </div>
-
-          {/* Settings for Manual Selection */}
-          {detectionMode === 'manual' && (
-            <div className="flex flex-col gap-2 mt-1 pt-2 border-t border-slate-800/80">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-300 font-medium">Manual Selection Tool</label>
-                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => onSelectManualTool?.('rectangle')}
-                    className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                      manualTool === 'rectangle'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Square className="w-3.5 h-3.5" />
-                    <span>Rect</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSelectManualTool?.('brush')}
-                    className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                      manualTool === 'brush'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Paintbrush className="w-3.5 h-3.5" />
-                    <span>Brush</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSelectManualTool?.('eraser')}
-                    className={`px-1.5 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${
-                      manualTool === 'eraser'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Eraser className="w-3.5 h-3.5" />
-                    <span>Eraser</span>
-                  </button>
-                </div>
-              </div>
-
-              {(manualTool === 'brush' || manualTool === 'eraser') && (
-                <div className="flex flex-col gap-1 mt-1">
-                  <div className="flex justify-between text-xs text-slate-300 font-medium">
-                    <span>{manualTool === 'eraser' ? 'Eraser Size' : 'Brush Size'}</span>
-                    <span className="text-slate-400">{brushSize} px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="50"
-                    value={brushSize}
-                    onChange={(e) => onSelectBrushSize?.(Number(e.target.value))}
-                    className="accent-indigo-500 cursor-pointer"
-                  />
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1 mt-1">
-                <label className="text-xs text-slate-300 font-medium">Default Manual Category</label>
-                <select
-                  value={manualCategory}
-                  onChange={(e) => onSelectManualCategory(e.target.value as RegionCategory)}
-                  className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="bubble-oval">Bubble Oval/Round</option>
-                  <option value="bubble-rect">Bubble Square/Box</option>
-                  <option value="text-outside">Floating Text (Outside Bubble)</option>
-                  <option value="sfx">SFX (Sound Effects)</option>
-                </select>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Selected Region Editor */}

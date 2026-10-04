@@ -33,8 +33,8 @@ describe('Translation MVP Workflow Integration', () => {
 
     render(<App />);
 
-    // Stage 1: Click Automatic Detection to populate regions
-    const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
+    // Stage 1: Click Automatic OCR to populate regions
+    const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic OCR/i })[0]);
     fireEvent.click(autoBtn);
 
     // Switch to Stage 3: Translation
@@ -84,8 +84,8 @@ describe('Translation MVP Workflow Integration', () => {
 
     render(<App />);
 
-    // Stage 1: Click Automatic Detection
-    const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
+    // Stage 1: Click Automatic OCR
+    const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic OCR/i })[0]);
     fireEvent.click(autoBtn);
 
     // Switch to Stage 3: Translation
@@ -139,8 +139,8 @@ describe('Translation MVP Workflow Integration', () => {
 
     render(<App />);
 
-    // Stage 1: Run Automatic Detection to detect regions
-    const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
+    // Stage 1: Run Automatic OCR to detect regions
+    const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic OCR/i })[0]);
     fireEvent.click(autoBtn);
 
     await waitFor(() => screen.getByText(/WHAT IS THIS\?!/i));

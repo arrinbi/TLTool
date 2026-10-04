@@ -834,6 +834,25 @@ export async function cleanImageRegion(
     const patchAnalysis = analyzePatchBackground(patchImageData, targetMask);
     isUniformBg = patchAnalysis.isUniform;
     avgBgColor = patchAnalysis.avgColor;
+  } else if (options.isManualRegion) {
+    // Manually selected cleaning area is authoritative and must cover the full selection rather than shrinking to OCR bounding box
+    targetMask = new Uint8Array(targetW * targetH);
+    const offsetX = bbox.x - targetX;
+    const offsetY = bbox.y - targetY;
+
+    for (let ry = 0; ry < bbox.height; ry++) {
+      for (let rx = 0; rx < bbox.width; rx++) {
+        const px = offsetX + rx;
+        const py = offsetY + ry;
+        if (px >= 0 && px < targetW && py >= 0 && py < targetH) {
+          targetMask[py * targetW + px] = 1;
+        }
+      }
+    }
+
+    const patchAnalysis = analyzePatchBackground(patchImageData, targetMask);
+    isUniformBg = patchAnalysis.isUniform;
+    avgBgColor = patchAnalysis.avgColor;
   } else {
     const textMaskResult = generateTextMask(
       patchImageData,
