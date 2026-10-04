@@ -71,9 +71,12 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Create initial manual selection in Stage 1
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    // Switch to Stage 2 Cleaning Studio
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
+
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
 
@@ -83,12 +86,8 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerUp(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
     });
-
-    // Switch to Stage 2 Cleaning Studio
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
 
     // Select Eraser Tool
     const eraserBtn = screen.getAllByRole('button', { name: /Eraser/i })[0];
@@ -110,9 +109,12 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Create a manual region
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    // Switch to Stage 2 Cleaning
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
+
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
@@ -120,12 +122,8 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerUp(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
     });
-
-    // Switch to Stage 2 Cleaning
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
 
     // Select Eraser tool
     const eraserBtn = screen.getAllByRole('button', { name: /Eraser/i })[0];
@@ -147,9 +145,12 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Create a manual region in Stage 1
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    // Switch to Stage 2 Cleaning Studio
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
+
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 60, clientY: 60, pointerId: 1 });
@@ -157,12 +158,8 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerUp(overlayContainer, { clientX: 120, clientY: 120, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
     });
-
-    // Switch to Stage 2 Cleaning Studio
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
 
     // Clear OCR mocks to track calls during erasing
     vi.clearAllMocks();
@@ -188,8 +185,11 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
+
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
@@ -197,11 +197,8 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerUp(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
     });
-
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
 
     vi.clearAllMocks();
 
@@ -221,9 +218,12 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Create a manual region in Stage 1
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    // Switch to Stage 2 Cleaning Studio
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
+
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
@@ -231,12 +231,8 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerUp(overlayContainer, { clientX: 200, clientY: 200, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
     });
-
-    // Switch to Stage 2 Cleaning Studio
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
 
     // Switch to Eraser tool and erase part of the selection
     const eraserBtn = screen.getAllByRole('button', { name: /Eraser/i })[0];
@@ -270,9 +266,12 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Create a manual region in Stage 1
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    // Switch to Stage 2 Cleaning
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
+
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
 
@@ -282,12 +281,8 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerUp(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
     });
-
-    // Switch to Stage 2 Cleaning
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
 
     // 2. Eraser
     const eraserBtn = screen.getAllByRole('button', { name: /Eraser/i })[0];

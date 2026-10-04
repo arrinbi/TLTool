@@ -40,7 +40,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     vi.clearAllMocks();
   });
 
-  it('1. does NOT run Automatic Detection on upload, but runs when user explicitly clicks Automatic Detection', async () => {
+  it('1. does NOT run Automatic Detection on upload, but runs when user explicitly clicks Automatic OCR', async () => {
     const detectSpy = vi.mocked(ocrService.detectTextRegions);
     const recognizeSpy = vi.mocked(ocrService.recognizeRegionText);
 
@@ -57,7 +57,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     expect(recognizeSpy).not.toHaveBeenCalled();
     expect(screen.getByText(/Detected Regions \(0\)/i)).toBeDefined();
 
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     expect(detectSpy).toHaveBeenCalledTimes(1);
@@ -84,7 +84,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     await waitFor(
@@ -119,17 +119,17 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.queryAllByRole('button', { name: /Manual Selection/i }).length).toBeGreaterThan(0);
+      expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    // Switch to manual selection
-    const manualBtn = screen.getAllByRole('button', { name: /Manual Selection/i })[0];
-    fireEvent.click(manualBtn);
+    // Switch to Cleaning stage to draw a manual selection region
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
 
     const canvasOverlay = await waitFor(() => {
-      const el = document.querySelector('.cursor-crosshair');
+      const el = document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default');
       expect(el).not.toBeNull();
-      return el!;
+      return el as HTMLDivElement;
     });
 
     vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
@@ -144,19 +144,24 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       toJSON: () => {},
     });
 
-    // Draw manual box
+    // Enable drawing mode and draw manual region box
+    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    fireEvent.click(drawToggleBtn);
+
     fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
     fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
 
-    // Wait for manual region creation and its automatic OCR to finish processing
     await waitFor(() => {
-      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
-      expect(screen.queryByText('Recognizing text...')).toBeNull();
+      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeDefined();
     });
 
-    // Click Automatic Detection
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    // Switch back to Stage 1 OCR
+    const ocrNavBtn = screen.getByRole('button', { name: /1\. OCR/i });
+    fireEvent.click(ocrNavBtn);
+
+    // Click Automatic OCR
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     // Should now have 2 regions: 1 manual + 1 auto
@@ -168,10 +173,9 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       { timeout: 4000 }
     );
 
-    // Verify recognizeRegionText was called for manual creation (call 0), and once for auto region during Automatic Detection (call 1)
     // Automatic Detection itself should NOT re-OCR the manual region
-    expect(recognizeSpy).toHaveBeenCalledTimes(2);
-    expect(recognizeSpy.mock.calls[1][1]).toEqual({ x: 300, y: 300, width: 100, height: 50 });
+    expect(recognizeSpy).toHaveBeenCalledTimes(1);
+    expect(recognizeSpy.mock.calls[0][1]).toEqual({ x: 300, y: 300, width: 100, height: 50 });
   });
 
   it('4. handles partial OCR failure gracefully, keeping all regions and continuing remaining OCR jobs', async () => {
@@ -206,7 +210,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     await waitFor(() => {
@@ -247,7 +251,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     await waitFor(() => {
@@ -280,7 +284,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     await waitFor(() => {
@@ -317,7 +321,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     });
 
     // Run automatic detection
-    const autoBtn = screen.getAllByRole('button', { name: /Automatic Detection/i })[0];
+    const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];
     fireEvent.click(autoBtn);
 
     await waitFor(() => {
