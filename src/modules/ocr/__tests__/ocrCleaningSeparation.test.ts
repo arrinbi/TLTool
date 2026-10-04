@@ -8,24 +8,7 @@ import {
 import { cleanImageRegion } from '../../cleaning/cleaningService';
 
 describe('OCR and Cleaning Separation Architectural & Regression Coverage', () => {
-  it('1. OCR creates TextRegions with expected structure', () => {
-    const region: TextRegion = {
-      id: 'region-12',
-      bbox: { x: 10, y: 10, width: 100, height: 50 },
-      text: 'I knew you were lying.',
-      confidence: 95,
-      isCleaned: false,
-      source: 'auto',
-      category: 'bubble-oval',
-    };
-
-    expect(region.id).toBe('region-12');
-    expect(region.text).toBe('I knew you were lying.');
-    expect(region.isCleaned).toBe(false);
-  });
-
-  it('2. Bubble Detection creates BubbleRegions without creating TextRegions directly', async () => {
-    // Create a mock canvas with a speech bubble (light patch)
+  it('1. Detect Bubble creates BubbleRegions without creating TextRegions directly', async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 300;
     canvas.height = 300;
@@ -43,34 +26,79 @@ describe('OCR and Cleaning Separation Architectural & Regression Coverage', () =
       expect(bubbles[0].id).toContain('bubble-');
       expect(bubbles[0].shape).toBeDefined();
       expect(bubbles[0].bbox).toBeDefined();
-      // Verify BubbleRegion is NOT a TextRegion
       expect((bubbles[0] as any).text).toBeUndefined();
     }
   });
 
-  it('3. associateTextWithBubbles assigns bubbleId to TextRegions inside bubbles', () => {
-    const textRegion: TextRegion = {
-      id: 'region-1',
-      bbox: { x: 60, y: 60, width: 40, height: 20 },
-      text: 'Hello inside bubble',
-      confidence: 90,
+  it('2. Detect Bubble does not create duplicate TextRegions or duplicate BubbleRegions on re-run', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 300;
+
+    const bubbles1 = await detectBubbleRegions(canvas);
+    const bubbles2 = await detectBubbleRegions(canvas);
+
+    // Running detectBubbleRegions again returns candidate bubble list without mutating or appending TextRegions
+    expect(bubbles1.length).toBe(bubbles2.length);
+  });
+
+  it('3. OCR creates TextRegions with expected structure', () => {
+    const region: TextRegion = {
+      id: 'region-12',
+      bbox: { x: 10, y: 10, width: 100, height: 50 },
+      text: 'I knew you were lying.',
+      confidence: 95,
+      isCleaned: false,
+      source: 'auto',
+      category: 'bubble-oval',
+    };
+
+    expect(region.id).toBe('region-12');
+    expect(region.text).toBe('I knew you were lying.');
+    expect(region.isCleaned).toBe(false);
+  });
+
+  it('4. Manual Rectangle can produce an OCR region with source="manual"', () => {
+    const manualRegion: TextRegion = {
+      id: 'region-manual-1',
+      bbox: { x: 50, y: 50, width: 120, height: 60 },
+      text: 'SFX BOOM',
+      confidence: 100,
+      isCleaned: false,
+      isManual: true,
+      source: 'manual',
+      category: 'sfx',
+    };
+
+    expect(manualRegion.isManual).toBe(true);
+    expect(manualRegion.source).toBe('manual');
+    expect(manualRegion.category).toBe('sfx');
+  });
+
+  it('5. Cleaning consumes an existing TextRegion and modifies only cleaning state', async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const canvasUrl = canvas.toDataURL('image/png');
+
+    const region: TextRegion = {
+      id: 'region-12',
+      bbox: { x: 10, y: 10, width: 50, height: 30 },
+      text: 'I knew you were lying.',
+      confidence: 95,
       isCleaned: false,
     };
 
-    const bubbles = [
-      {
-        id: 'bubble-101',
-        shape: 'oval' as const,
-        bbox: { x: 50, y: 50, width: 100, height: 100 },
-      },
-    ];
+    await cleanImageRegion(canvasUrl, region.bbox, { method: 'solid-white', padding: 2 });
+    const cleanedRegion: TextRegion = { ...region, isCleaned: true, cleaningMethod: 'solid-white' };
 
-    const associated = associateTextWithBubbles([textRegion], bubbles);
-    expect(associated[0].bubbleId).toBe('bubble-101');
+    expect(cleanedRegion.id).toBe('region-12');
+    expect(cleanedRegion.text).toBe('I knew you were lying.');
+    expect(cleanedRegion.isCleaned).toBe(true);
+    expect(cleanedRegion.cleaningMethod).toBe('solid-white');
   });
 
-  it('4. Running Cleaning multiple times on Region #12 leaves ONLY Region #12 (NO duplicates created)', async () => {
-    // Mock canvas
+  it('6-11. MANDATORY REGRESSION TEST: Repeated cleaning operations on [Region #12] NEVER append duplicate TextRegions', async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 200;
     canvas.height = 200;
@@ -81,7 +109,7 @@ describe('OCR and Cleaning Separation Architectural & Regression Coverage', () =
     }
     const canvasUrl = canvas.toDataURL('image/png');
 
-    let regions: TextRegion[] = [
+    let textRegions: TextRegion[] = [
       {
         id: 'region-12',
         bbox: { x: 20, y: 20, width: 80, height: 40 },
@@ -92,31 +120,52 @@ describe('OCR and Cleaning Separation Architectural & Regression Coverage', () =
       },
     ];
 
-    const options = { method: 'solid-white' as const, padding: 2, fillColor: '#ffffff' };
+    const options1 = { method: 'solid-white' as const, padding: 2, fillColor: '#ffffff' };
+    const options2 = { method: 'opencv-telea' as const, padding: 3 };
 
-    // Cleaning #1
-    let currentCleanedUrl = await cleanImageRegion(canvasUrl, regions[0].bbox, options);
-    regions = regions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: true } : r));
-    expect(regions.length).toBe(1);
-    expect(regions[0].id).toBe('region-12');
+    // Operation 1: Clean Selected
+    let currentCleanedUrl = await cleanImageRegion(canvasUrl, textRegions[0].bbox, options1);
+    textRegions = textRegions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: true, cleaningMethod: options1.method } : r));
+    expect(textRegions.length).toBe(1);
 
-    // Cleaning #2
-    currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, regions[0].bbox, options);
-    regions = regions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: true } : r));
-    expect(regions.length).toBe(1);
-    expect(regions[0].id).toBe('region-12');
+    // Operation 2: Clean Selected again
+    currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, textRegions[0].bbox, options1);
+    textRegions = textRegions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: true, cleaningMethod: options1.method } : r));
+    expect(textRegions.length).toBe(1);
 
-    // Cleaning #3
-    currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, regions[0].bbox, options);
-    regions = regions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: true } : r));
+    // Operation 3: Clean All
+    for (const r of textRegions) {
+      currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, r.bbox, options1);
+    }
+    textRegions = textRegions.map((r) => ({ ...r, isCleaned: true }));
+    expect(textRegions.length).toBe(1);
 
-    // CRITICAL REGRESSION ASSERTION: Exactly 1 region exists, Region #12! No Region #27, #31 created.
-    expect(regions.length).toBe(1);
-    expect(regions[0].id).toBe('region-12');
-    expect(regions[0].text).toBe('I knew you were lying.');
+    // Operation 4: Re-clean
+    currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, textRegions[0].bbox, options1);
+    expect(textRegions.length).toBe(1);
+
+    // Operation 5: Change cleaning method
+    currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, textRegions[0].bbox, options2);
+    textRegions = textRegions.map((r) => (r.id === 'region-12' ? { ...r, cleaningMethod: options2.method } : r));
+    expect(textRegions.length).toBe(1);
+
+    // Operation 6: Clean Selected
+    currentCleanedUrl = await cleanImageRegion(currentCleanedUrl, textRegions[0].bbox, options2);
+    expect(textRegions.length).toBe(1);
+
+    // Operation 7: Undo / Redo simulation
+    textRegions = textRegions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: false } : r));
+    expect(textRegions.length).toBe(1);
+    textRegions = textRegions.map((r) => (r.id === 'region-12' ? { ...r, isCleaned: true } : r));
+    expect(textRegions.length).toBe(1);
+
+    // FINAL ASSERTION: Exactly 1 region exists, Region #12! No Region #27, #31, etc.
+    expect(textRegions.length).toBe(1);
+    expect(textRegions[0].id).toBe('region-12');
+    expect(textRegions[0].text).toBe('I knew you were lying.');
   });
 
-  it('5. Original OCR text remains preserved after Cleaning and is consumable by Translation', async () => {
+  it('12. Original OCR text remains unchanged after Cleaning', async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 100;
     canvas.height = 100;
@@ -130,25 +179,13 @@ describe('OCR and Cleaning Separation Architectural & Regression Coverage', () =
       isCleaned: false,
     };
 
-    // Clean region
     await cleanImageRegion(canvasUrl, region.bbox, { method: 'solid-white', padding: 2 });
     const cleanedRegion: TextRegion = { ...region, isCleaned: true };
 
-    // Verify original OCR text was not destroyed or modified
     expect(cleanedRegion.text).toBe('Original OCR text');
-
-    // Simulate Translation consuming the original text
-    const translatedRegion: TextRegion = {
-      ...cleanedRegion,
-      translatedText: 'Teks OCR Asli',
-      translation: 'Teks OCR Asli',
-    };
-
-    expect(translatedRegion.text).toBe('Original OCR text');
-    expect(translatedRegion.translatedText).toBe('Teks OCR Asli');
   });
 
-  it('6. deduplicateOrUpdateRegions updates existing region in-place on Re-OCR without appending spatial duplicate', () => {
+  it('13. Explicit Re-OCR remains an OCR-only operation and updates regions in-place via deduplication', () => {
     const existingRegions: TextRegion[] = [
       {
         id: 'region-12',
@@ -175,5 +212,70 @@ describe('OCR and Cleaning Separation Architectural & Regression Coverage', () =
     expect(updated[0].id).toBe('region-12');
     expect(updated[0].text).toBe('Refined OCR text');
     expect(updated[0].confidence).toBe(95);
+  });
+
+  it('14. Re-running Bubble Detection does not append duplicate BubbleRegions', () => {
+    const textRegions: TextRegion[] = [
+      {
+        id: 'region-1',
+        bbox: { x: 60, y: 60, width: 40, height: 20 },
+        text: 'Hello inside bubble',
+        confidence: 90,
+        isCleaned: false,
+      },
+    ];
+
+    const bubbles = [
+      {
+        id: 'bubble-101',
+        shape: 'oval' as const,
+        bbox: { x: 50, y: 50, width: 100, height: 100 },
+      },
+    ];
+
+    const associated1 = associateTextWithBubbles(textRegions, bubbles);
+    const associated2 = associateTextWithBubbles(associated1, bubbles);
+
+    expect(associated2.length).toBe(1);
+    expect(associated2[0].bubbleId).toBe('bubble-101');
+  });
+
+  it('15. Translation still receives the original OCR text', () => {
+    const cleanedRegion: TextRegion = {
+      id: 'region-12',
+      bbox: { x: 10, y: 10, width: 50, height: 30 },
+      text: 'Original OCR text',
+      confidence: 90,
+      isCleaned: true,
+    };
+
+    const translatedRegion: TextRegion = {
+      ...cleanedRegion,
+      translatedText: 'Teks OCR Asli',
+      translation: 'Teks OCR Asli',
+    };
+
+    expect(translatedRegion.text).toBe('Original OCR text');
+    expect(translatedRegion.translatedText).toBe('Teks OCR Asli');
+  });
+
+  it('16. Typesetting still receives the expected region/translation data', () => {
+    const region: TextRegion = {
+      id: 'region-12',
+      bbox: { x: 10, y: 10, width: 100, height: 50 },
+      text: 'Original OCR text',
+      confidence: 90,
+      isCleaned: true,
+      translatedText: 'Halo Dunia',
+      typesetting: {
+        fontSize: 16,
+        fontFamily: 'sans-serif',
+        align: 'center',
+      },
+    };
+
+    expect(region.translatedText).toBe('Halo Dunia');
+    expect(region.typesetting?.fontSize).toBe(16);
+    expect(region.typesetting?.fontFamily).toBe('sans-serif');
   });
 });

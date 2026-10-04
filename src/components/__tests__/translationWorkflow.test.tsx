@@ -37,8 +37,8 @@ describe('Translation MVP Workflow Integration', () => {
     const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
     fireEvent.click(autoBtn);
 
-    // Switch to Stage 2: Translation
-    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /2\. Translation/i }));
+    // Switch to Stage 3: Translation
+    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /3\. Translation/i }));
     fireEvent.click(stage2Btn);
 
     // Verify Stage 2 Translation Studio panel is active and OCR/Cleaning controls are hidden
@@ -88,8 +88,8 @@ describe('Translation MVP Workflow Integration', () => {
     const autoBtn = await waitFor(() => screen.getAllByRole('button', { name: /Automatic Detection/i })[0]);
     fireEvent.click(autoBtn);
 
-    // Switch to Stage 2: Translation
-    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /2\. Translation/i }));
+    // Switch to Stage 3: Translation
+    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /3\. Translation/i }));
     fireEvent.click(stage2Btn);
 
     // Select first region
@@ -145,8 +145,8 @@ describe('Translation MVP Workflow Integration', () => {
 
     await waitFor(() => screen.getByText(/WHAT IS THIS\?!/i));
 
-    // Switch to Stage 2: Translation
-    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /2\. Translation/i }));
+    // Switch to Stage 3: Translation
+    const stage2Btn = await waitFor(() => screen.getByRole('button', { name: /3\. Translation/i }));
     fireEvent.click(stage2Btn);
 
     // Find and click Translate All button in Stage 2 panel

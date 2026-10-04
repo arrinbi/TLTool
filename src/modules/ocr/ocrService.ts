@@ -1,5 +1,6 @@
 import { createWorker, PSM } from 'tesseract.js';
 import type { TextRegion, BoundingBox, RegionCategory, BubbleRegion, BubbleShape } from '../../types';
+import { getOpenCV } from '../cleaning/cleaningService';
 
 export interface OcrProgress {
   status: string;
@@ -463,36 +464,172 @@ export async function detectBubbleRegions(
     if (!ctx) return [];
 
     const { width, height } = sourceCanvas;
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const data = imgData.data;
+    if (width <= 0 || height <= 0) return [];
 
-    // Detect uniform white/light regions (speech bubble candidates)
+    const imgData = ctx.getImageData(0, 0, width, height);
+
+    // 1. Try OpenCV detection when available
+    try {
+      const cv = await getOpenCV();
+      if (cv && cv.Mat && cv.matFromImageData) {
+        const srcMat = cv.matFromImageData(imgData);
+        const grayMat = new cv.Mat();
+        cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
+
+        const edgeMat = new cv.Mat();
+        cv.Canny(grayMat, edgeMat, 40, 120);
+
+        // Morphological Closing to connect contour lines
+        const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+        const closedMat = new cv.Mat();
+        cv.morphologyEx(edgeMat, closedMat, cv.MORPH_CLOSE, kernel);
+
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
+        cv.findContours(closedMat, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        const candidateBubbles: BubbleRegion[] = [];
+
+        for (let i = 0; i < contours.size(); i++) {
+          const contour = contours.get(i);
+          const area = cv.contourArea(contour);
+          if (area < 800) {
+            contour.delete();
+            continue;
+          }
+
+          const rect = cv.boundingRect(contour);
+          if (
+            rect.width < 35 ||
+            rect.height < 25 ||
+            rect.width > width * 0.85 ||
+            rect.height > height * 0.85
+          ) {
+            contour.delete();
+            continue;
+          }
+
+          // Measure convex hull & solidity
+          const hull = new cv.Mat();
+          cv.convexHull(contour, hull);
+          const hullArea = cv.contourArea(hull);
+          hull.delete();
+
+          if (hullArea <= 0) {
+            contour.delete();
+            continue;
+          }
+
+          const solidity = area / hullArea;
+          if (solidity < 0.70) {
+            contour.delete();
+            continue;
+          }
+
+          // Verify interior lightness (speech bubble fill)
+          const insetX = Math.max(1, Math.floor(rect.width * 0.15));
+          const insetY = Math.max(1, Math.floor(rect.height * 0.15));
+          const inX = rect.x + insetX;
+          const inY = rect.y + insetY;
+          const inW = Math.max(1, rect.width - insetX * 2);
+          const inH = Math.max(1, rect.height - insetY * 2);
+
+          let sumLum = 0;
+          let sampleCount = 0;
+          const data = imgData.data;
+
+          for (let sy = inY; sy < inY + inH; sy += 3) {
+            for (let sx = inX; sx < inX + inW; sx += 3) {
+              if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
+                const idx = (sy * width + sx) * 4;
+                const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                sumLum += lum;
+                sampleCount++;
+              }
+            }
+          }
+
+          const avgLum = sampleCount > 0 ? sumLum / sampleCount : 0;
+          contour.delete();
+
+          // Real speech bubbles have high interior lightness (> 175)
+          if (avgLum < 175) {
+            continue;
+          }
+
+          const aspectRatio = rect.width / Math.max(1, rect.height);
+          let shape: BubbleShape = 'oval';
+          if (aspectRatio > 0.85 && aspectRatio < 1.15) {
+            shape = 'circle';
+          } else if (aspectRatio >= 2.0 || aspectRatio <= 0.5) {
+            shape = 'rectangle';
+          }
+
+          const bbox: BoundingBox = {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+
+          // Non-Maximum Suppression (avoid duplicate overlapping bubble candidates)
+          const isOverlap = candidateBubbles.some(
+            (b) => computeOverlapRatio(b.bbox, bbox) > 0.35
+          );
+
+          if (!isOverlap) {
+            candidateBubbles.push({
+              id: `bubble-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              shape,
+              bbox,
+              confidence: Math.round(solidity * 100),
+            });
+          }
+        }
+
+        // Clean up OpenCV Mat memory
+        srcMat.delete();
+        grayMat.delete();
+        edgeMat.delete();
+        kernel.delete();
+        closedMat.delete();
+        contours.delete();
+        hierarchy.delete();
+
+        if (candidateBubbles.length > 0) {
+          return candidateBubbles;
+        }
+      }
+    } catch (cvErr) {
+      console.warn('OpenCV bubble detection fallback:', cvErr);
+    }
+
+    // 2. Fallback Detector: Strict border stroke verification
+    const data = imgData.data;
     const visited = new Uint8Array(width * height);
     const bubbles: BubbleRegion[] = [];
-
-    // Step down resolution for fast scanning
     const step = 4;
-    for (let y = step; y < height - step; y += step) {
-      for (let x = step; x < width - step; x += step) {
-        const idx = (y * width + x) * 4;
+
+    for (let y = step * 2; y < height - step * 2; y += step) {
+      for (let x = step * 2; x < width - step * 2; x += step) {
         const pos = y * width + x;
         if (visited[pos]) continue;
 
+        const idx = pos * 4;
         const r = data[idx];
         const g = data[idx + 1];
         const b = data[idx + 2];
         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
 
-        // Speech bubble interior candidate pixel (high luminance, low saturation)
+        // Interior candidate pixel must be light/white fill
         if (lum > 220 && Math.max(r, g, b) - Math.min(r, g, b) < 25) {
-          // BFS to measure bounding box of light patch
           let minX = x, maxX = x, minY = y, maxY = y;
           const queue = [pos];
           visited[pos] = 1;
 
           let count = 0;
           let qHead = 0;
-          while (qHead < queue.length && count < 50000) {
+          while (qHead < queue.length && count < 40000) {
             const curr = queue[qHead++];
             count++;
             const cx = curr % width;
@@ -532,19 +669,50 @@ export async function detectBubbleRegions(
           const bWidth = maxX - minX + 1;
           const bHeight = maxY - minY + 1;
 
-          // Require reasonable speech bubble dimensions (e.g. min 30x20, max 90% page)
           if (
-            bWidth >= 30 &&
-            bHeight >= 20 &&
-            bWidth < width * 0.9 &&
-            bHeight < height * 0.9 &&
-            count >= 20
+            bWidth >= 35 &&
+            bHeight >= 25 &&
+            bWidth < width * 0.85 &&
+            bHeight < height * 0.85 &&
+            count >= 25
           ) {
+            // STRICT BORDER STROKE VALIDATION:
+            // Verify continuous dark border outline around perimeter of candidate box
+            let darkBorderCount = 0;
+            let totalBorderSamples = 0;
+
+            const checkBorderPixel = (px: number, py: number) => {
+              if (px >= 0 && px < width && py >= 0 && py < height) {
+                totalBorderSamples++;
+                const pIdx = (py * width + px) * 4;
+                const pLum = 0.299 * data[pIdx] + 0.587 * data[pIdx + 1] + 0.114 * data[pIdx + 2];
+                // Border stroke is dark relative to light interior
+                if (pLum < 170) {
+                  darkBorderCount++;
+                }
+              }
+            };
+
+            for (let bx = minX; bx <= maxX; bx += 4) {
+              checkBorderPixel(bx, Math.max(0, minY - 2));
+              checkBorderPixel(bx, Math.min(height - 1, maxY + 2));
+            }
+            for (let by = minY; by <= maxY; by += 4) {
+              checkBorderPixel(Math.max(0, minX - 2), by);
+              checkBorderPixel(Math.min(width - 1, maxX + 2), by);
+            }
+
+            // Require at least 45% of border perimeter samples to contain a dark outline stroke!
+            const darkBorderRatio = totalBorderSamples > 0 ? darkBorderCount / totalBorderSamples : 0;
+            if (darkBorderRatio < 0.45) {
+              continue;
+            }
+
             const aspectRatio = bWidth / Math.max(1, bHeight);
             let shape: BubbleShape = 'oval';
             if (aspectRatio > 0.85 && aspectRatio < 1.15) {
               shape = 'circle';
-            } else if (aspectRatio >= 2.2 || aspectRatio <= 0.45) {
+            } else if (aspectRatio >= 2.0 || aspectRatio <= 0.5) {
               shape = 'rectangle';
             }
 
@@ -555,9 +723,8 @@ export async function detectBubbleRegions(
               height: bHeight,
             };
 
-            // Avoid duplicate overlapping bubbles
             const isDuplicate = bubbles.some(
-              (b) => computeOverlapRatio(b.bbox, bbox) > 0.4
+              (b) => computeOverlapRatio(b.bbox, bbox) > 0.35
             );
 
             if (!isDuplicate) {
@@ -565,7 +732,7 @@ export async function detectBubbleRegions(
                 id: `bubble-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
                 shape,
                 bbox,
-                confidence: 90,
+                confidence: Math.round(darkBorderRatio * 100),
               });
             }
           }

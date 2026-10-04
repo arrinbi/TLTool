@@ -41,7 +41,7 @@ describe('Final Preview & Export Stage (Stage 4)', () => {
       expect(screen.getByText('Sample_Manhwa_Page_01.png')).toBeInTheDocument();
     });
 
-    const qcStageBtn = screen.getByText('4. QC & Export');
+    const qcStageBtn = screen.getByText('5. QC & Export');
     fireEvent.click(qcStageBtn);
 
     await waitFor(() => {

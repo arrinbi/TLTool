@@ -49,7 +49,7 @@ export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
-  const [activeStage, setActiveStage] = useState<WorkflowStage>('ocr-cleaning');
+  const [activeStage, setActiveStage] = useState<WorkflowStage>('ocr');
   const [detectionMode, setDetectionMode] = useState<'auto' | 'manual'>('auto');
   const [manualTool, setManualTool] = useState<ManualTool>('rectangle');
   const [brushSize, setBrushSize] = useState<number>(15);
@@ -597,6 +597,45 @@ export function App() {
       const targetPage = pages.find((p) => p.id === selectedPageId);
       if (!targetPage) return;
 
+      if (activeStage === 'cleaning') {
+        // In Cleaning Stage, drawing a manual selection performs cleaning on that area directly
+        // without creating a new TextRegion or modifying the OCR dataset.
+        setPages((prev) =>
+          prev.map((p) => (p.id === targetPage.id ? { ...p, isProcessing: true } : p))
+        );
+        try {
+          const effectiveOptions: CleaningOptions = {
+            method: 'opencv-telea',
+            padding: 2,
+            isManualRegion: true,
+            category: category || 'bubble-oval',
+            brushMask: extra?.brushMask,
+            isBrush: extra?.isBrush,
+            brushPoints: extra?.brushPoints,
+            brushSize: extra?.brushSize,
+          };
+          const newCleanedUrl = await cleanImageRegion(targetPage.cleanedUrl, bbox, effectiveOptions);
+          setPages((prev) =>
+            prev.map((p) => {
+              if (p.id !== targetPage.id) return p;
+              return pushPageHistory(
+                { ...p, isProcessing: false },
+                newCleanedUrl,
+                p.regions,
+                'Clean manual selection area'
+              );
+            })
+          );
+        } catch (err) {
+          console.error('Cleaning failed:', err);
+          setPages((prev) =>
+            prev.map((p) => (p.id === targetPage.id ? { ...p, isProcessing: false } : p))
+          );
+        }
+        return;
+      }
+
+      // Stage 1 (OCR Stage): Adds a new manual TextRegion to the OCR dataset and runs OCR recognition
       const pageId = targetPage.id;
       const newRegion: TextRegion = {
         id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -653,7 +692,7 @@ export function App() {
         );
       }
     },
-    [selectedPageId, pages, aiConfig]
+    [selectedPageId, pages, aiConfig, activeStage]
   );
 
   const handleDeleteRegion = useCallback((regionId: string) => {

@@ -131,4 +131,4 @@ export interface CleaningOptions {
 
 export type WorkspaceViewMode = 'cleaned' | 'original' | 'side-by-side' | 'split-slider';
 
-export type WorkflowStage = 'ocr-cleaning' | 'translation' | 'typesetting' | 'qc';
+export type WorkflowStage = 'ocr' | 'cleaning' | 'translation' | 'typesetting' | 'qc';

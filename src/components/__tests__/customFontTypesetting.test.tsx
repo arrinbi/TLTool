@@ -21,8 +21,8 @@ describe('Custom Font Typesetting Workflow Integration', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    // Switch to Stage 3: Typesetting
-    const typesettingStageTabs = screen.getAllByText(/3\. Typesetting/i);
+    // Switch to Stage 4: Typesetting
+    const typesettingStageTabs = screen.getAllByText(/4\. Typesetting/i);
     fireEvent.click(typesettingStageTabs[0]);
 
     // Verify Custom Fonts section controls exist
@@ -128,8 +128,8 @@ describe('Custom Font Typesetting Workflow Integration', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    // Switch to Stage 3
-    const typesettingStageTabs = screen.getAllByText(/3\. Typesetting/i);
+    // Switch to Stage 4
+    const typesettingStageTabs = screen.getAllByText(/4\. Typesetting/i);
     fireEvent.click(typesettingStageTabs[0]);
 
     await waitFor(() => {
