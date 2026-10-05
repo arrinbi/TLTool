@@ -78,7 +78,23 @@ export function App() {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(DEFAULT_FONT_FAMILY_STORAGE_KEY, fontFamily);
     }
-  }, []);
+    if (!selectedPageId) return;
+    setPages((prevPages) =>
+      prevPages.map((p) => {
+        if (p.id !== selectedPageId) return p;
+        return {
+          ...p,
+          regions: p.regions.map((r) => ({
+            ...r,
+            typesetting: {
+              ...r.typesetting,
+              fontFamily: fontFamily,
+            },
+          })),
+        };
+      })
+    );
+  }, [selectedPageId]);
 
   // Restore persisted custom fonts from IndexedDB on startup
   useEffect(() => {

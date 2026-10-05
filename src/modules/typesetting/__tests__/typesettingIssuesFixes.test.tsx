@@ -290,4 +290,66 @@ describe('Typesetting Requirements Fixes Test Suite', () => {
     // Verify it was persisted to localStorage
     expect(localStorage.getItem('tltool_default_font_family')).toBe('Arial, sans-serif');
   });
+
+  it('6. Selected Global Default Font immediately applies font family to ALL existing regions on the current page', async () => {
+    localStorage.clear();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
+    });
+
+    // Switch to Stage 1 OCR and add a manual region
+    const ocrTab = screen.getAllByText(/1\. OCR/i)[0];
+    fireEvent.click(ocrTab);
+
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
+    fireEvent.click(drawToggleBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default');
+      expect(el).not.toBeNull();
+      return el as HTMLDivElement;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+    });
+
+    // Switch to Stage 4 Typesetting
+    const typesettingTabs = screen.getAllByText(/4\. Typesetting/i);
+    fireEvent.click(typesettingTabs[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Typesetting Studio/i)).toBeDefined();
+    });
+
+    // Change Global Default Font to Arial
+    const globalFontSelect = screen.getByLabelText('Global Default Font') as HTMLSelectElement;
+    expect(globalFontSelect).not.toBeNull();
+
+    fireEvent.change(globalFontSelect, { target: { value: 'Arial, sans-serif' } });
+    expect(globalFontSelect.value).toBe('Arial, sans-serif');
+
+    // Verify regional font family select on the existing region editor immediately reflects 'Arial, sans-serif'
+    const regionFontSelect = screen.getByLabelText('Font Family') as HTMLSelectElement;
+    expect(regionFontSelect.value).toBe('Arial, sans-serif');
+  });
 });
