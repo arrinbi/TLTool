@@ -37,6 +37,7 @@ import {
   renderTypesetImage,
   calculateAutoFontSize,
   getEffectiveTypesettingStyle,
+  AVAILABLE_FONTS,
 } from './modules/typesetting/typesettingService';
 import type { CustomFont } from './modules/typesetting/fontService';
 import { processFontUpload, unregisterCustomFont, loadSavedCustomFonts } from './modules/typesetting/fontService';
@@ -45,6 +46,8 @@ import type { QcReport, QcIssue } from './modules/qc/qcService';
 import { runQualityControl } from './modules/qc/qcService';
 import { exportPagesAsPdf, exportPagesAsZip } from './modules/export/exportService';
 import { ShieldCheck, AlertTriangle, AlertCircle, X, Download } from 'lucide-react';
+
+const DEFAULT_FONT_FAMILY_STORAGE_KEY = 'tltool_default_font_family';
 
 export function App() {
   const [pages, setPages] = useState<ManhwaPage[]>([]);
@@ -60,17 +63,59 @@ export function App() {
   // Custom Font Management State
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
 
+  const [defaultFontFamily, setDefaultFontFamily] = useState<string>(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(DEFAULT_FONT_FAMILY_STORAGE_KEY);
+      if (saved) return saved;
+    }
+    return 'sans-serif';
+  });
+
+  const handleDefaultFontFamilyChange = useCallback((fontFamily: string) => {
+    setDefaultFontFamily(fontFamily);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(DEFAULT_FONT_FAMILY_STORAGE_KEY, fontFamily);
+    }
+  }, []);
+
   // Restore persisted custom fonts from IndexedDB on startup
   useEffect(() => {
     loadSavedCustomFonts().then((loaded) => {
       if (loaded.length > 0) {
         setCustomFonts(loaded);
       }
+      const savedFont = typeof localStorage !== 'undefined' ? localStorage.getItem(DEFAULT_FONT_FAMILY_STORAGE_KEY) : null;
+      if (savedFont && savedFont !== 'sans-serif') {
+        const isSystemFont = AVAILABLE_FONTS.some((f) => f.value === savedFont);
+        const isCustomFont = loaded.some((f) => f.familyName === savedFont);
+        if (!isSystemFont && !isCustomFont) {
+          handleDefaultFontFamilyChange('sans-serif');
+        }
+      }
     });
-  }, []);
-  const [defaultFontFamily, setDefaultFontFamily] = useState<string>('sans-serif');
+  }, [handleDefaultFontFamilyChange]);
   const [defaultFontSize, setDefaultFontSize] = useState<number>(16);
   const [fontUploadStatus, setFontUploadStatus] = useState<{ message: string; isError?: boolean } | null>(null);
+
+  const handleDefaultFontSizeChange = useCallback((newSize: number) => {
+    setDefaultFontSize(newSize);
+    if (!selectedPageId) return;
+    setPages((prevPages) =>
+      prevPages.map((p) => {
+        if (p.id !== selectedPageId) return p;
+        return {
+          ...p,
+          regions: p.regions.map((r) => ({
+            ...r,
+            typesetting: {
+              ...r.typesetting,
+              fontSize: newSize,
+            },
+          })),
+        };
+      })
+    );
+  }, [selectedPageId]);
 
   // AI Provider Config State
   const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
@@ -126,7 +171,7 @@ export function App() {
     setCustomFonts((prev) => prev.filter((f) => f.id !== fontId));
 
     if (defaultFontFamily === targetFont.familyName) {
-      setDefaultFontFamily('sans-serif');
+      handleDefaultFontFamilyChange('sans-serif');
     }
 
     setPages((prevPages) =>
@@ -378,6 +423,7 @@ export function App() {
         source: 'auto' as const,
         typesetting: {
           fontSize: defaultFontSize,
+          fontFamily: defaultFontFamily,
         },
       }));
 
@@ -709,6 +755,7 @@ export function App() {
         brushSize: extra?.brushSize,
         typesetting: {
           fontSize: defaultFontSize,
+          fontFamily: defaultFontFamily,
         },
       };
 
@@ -1254,9 +1301,9 @@ export function App() {
           onChangeAiConfig={handleSaveAiConfig}
           customFonts={customFonts}
           defaultFontFamily={defaultFontFamily}
-          onChangeDefaultFontFamily={setDefaultFontFamily}
+          onChangeDefaultFontFamily={handleDefaultFontFamilyChange}
           defaultFontSize={defaultFontSize}
-          onChangeDefaultFontSize={setDefaultFontSize}
+          onChangeDefaultFontSize={handleDefaultFontSizeChange}
           onUploadFontFile={handleUploadFontFile}
           onRemoveCustomFont={handleRemoveCustomFont}
           fontUploadStatus={fontUploadStatus}
