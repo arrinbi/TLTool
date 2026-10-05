@@ -5,7 +5,7 @@ import type {
   OcrRequest,
   TranslationRequest,
 } from '../aiTypes';
-import { MANHWA_OCR_SYSTEM_PROMPT, MANHWA_TRANSLATION_SYSTEM_PROMPT } from '../prompts';
+import { MANHWA_OCR_SYSTEM_PROMPT, buildTranslationSystemPrompt } from '../prompts';
 
 /**
  * Strips data URI header from base64 data string if present.
@@ -116,7 +116,12 @@ export class GeminiProvider implements AiOcrProvider, AiTranslationProvider {
       model
     )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-    const promptText = `${MANHWA_TRANSLATION_SYSTEM_PROMPT}\n\nText to translate:\n${textToTranslate}`;
+    const systemPrompt = buildTranslationSystemPrompt(
+      config.translationStyle,
+      config.pronounStyle,
+      config.customPronoun
+    );
+    const promptText = `${systemPrompt}\n\nText to translate:\n${textToTranslate}`;
 
     const parts: Array<any> = [{ text: promptText }];
 

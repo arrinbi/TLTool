@@ -198,6 +198,13 @@ export function App() {
 
   const selectedPage = pages.find((p) => p.id === selectedPageId) || null;
 
+  // Clear region selection overlay when entering Cleaning stage
+  useEffect(() => {
+    if (activeStage === 'cleaning') {
+      setSelectedRegionId(null);
+    }
+  }, [activeStage]);
+
   // Run QC Analysis
   const handleRunQc = useCallback(() => {
     if (!selectedPage) return;
@@ -1238,6 +1245,8 @@ export function App() {
           onTranslateAllRegions={handleTranslateAllRegions}
           onTypesetAllRegions={handleTypesetAllRegions}
           onClearTypesetting={handleClearTypesetting}
+          aiConfig={aiConfig}
+          onChangeAiConfig={handleSaveAiConfig}
           customFonts={customFonts}
           defaultFontFamily={defaultFontFamily}
           onChangeDefaultFontFamily={setDefaultFontFamily}

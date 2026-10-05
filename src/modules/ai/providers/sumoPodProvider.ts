@@ -5,7 +5,7 @@ import type {
   OcrRequest,
   TranslationRequest,
 } from '../aiTypes';
-import { MANHWA_OCR_SYSTEM_PROMPT, MANHWA_TRANSLATION_SYSTEM_PROMPT } from '../prompts';
+import { MANHWA_OCR_SYSTEM_PROMPT, buildTranslationSystemPrompt } from '../prompts';
 
 /**
  * Strips data URI header from base64 data string if present.
@@ -131,10 +131,16 @@ export class SumoPodProvider implements AiOcrProvider, AiTranslationProvider {
     const baseUrl = normalizeBaseUrl(config.sumopod?.baseUrl || 'https://api.sumopod.com/v1');
     const endpoint = `${baseUrl}/chat/completions`;
 
+    const systemPrompt = buildTranslationSystemPrompt(
+      config.translationStyle,
+      config.pronounStyle,
+      config.customPronoun
+    );
+
     const payload = {
       model,
       messages: [
-        { role: 'system', content: MANHWA_TRANSLATION_SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: textToTranslate },
       ],
     };

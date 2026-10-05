@@ -242,28 +242,73 @@ const MainWorkspaceComponent: React.FC<MainWorkspaceProps> = ({
             </div>
           )}
 
-          {/* Automatic OCR & Re-OCR Workflow Controls (Stage 1 only) */}
+          {/* Automatic OCR, Re-OCR & Rectangle Selection Controls (Stage 1 OCR) */}
           {activeStage === 'ocr' && (
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-              <button
-                onClick={onRunOcr}
-                disabled={page.isProcessing}
-                className="px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
-                title="Run Automatic OCR on Page"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Automatic OCR</span>
-              </button>
-              <button
-                onClick={onRunOcr}
-                disabled={page.isProcessing}
-                className="px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer text-slate-300 hover:text-slate-100 hover:bg-slate-900 disabled:opacity-50 border border-slate-800"
-                title="Re-run OCR Recognition"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                <span>Re-OCR</span>
-              </button>
-            </div>
+            <>
+              {/* Selection Tool Toggle */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+                <button
+                  onClick={() => {
+                    onSelectManualTool?.('rectangle');
+                    setIsDrawingMode(true);
+                  }}
+                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                    manualTool === 'rectangle'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Rectangle Selection Tool"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>Rectangle</span>
+                </button>
+                <div className="flex items-center gap-0.5 border-l border-slate-800 pl-1">
+                  <button
+                    onClick={() => setIsDrawingMode(false)}
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      !isDrawingMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="Select & Inspect Mode"
+                  >
+                    <MousePointer className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      onSelectManualTool?.('rectangle');
+                      setIsDrawingMode(true);
+                    }}
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      isDrawingMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="Draw New OCR Region Box"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Automatic OCR & Re-OCR */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button
+                  onClick={onRunOcr}
+                  disabled={page.isProcessing}
+                  className="px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                  title="Run Automatic OCR on Page"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Automatic OCR</span>
+                </button>
+                <button
+                  onClick={onRunOcr}
+                  disabled={page.isProcessing}
+                  className="px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer text-slate-300 hover:text-slate-100 hover:bg-slate-900 disabled:opacity-50 border border-slate-800"
+                  title="Re-run OCR Recognition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Re-OCR</span>
+                </button>
+              </div>
+            </>
           )}
 
           {/* Cleaning Selection Tools & Category Selector (Stage 2 Cleaning only) */}
