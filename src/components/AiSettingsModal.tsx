@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Key, Bot, Cpu, ShieldAlert, Eye, EyeOff, Save } from 'lucide-react';
-import type { AiConfig, OcrProviderType, TranslationProviderType } from '../modules/ai/aiTypes';
+import type { AiConfig, OcrProviderType, TranslationProviderType, TranslationStyle, PronounStyle } from '../modules/ai/aiTypes';
 
 interface AiSettingsModalProps {
   isOpen: boolean;
@@ -65,6 +65,71 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({
               TLTool runs entirely in your browser (GitHub Pages). API keys entered here are stored locally in your browser's localStorage and sent directly to the selected AI provider endpoints.
             </span>
           </div>
+        </div>
+
+        {/* Translation Style & Pronoun Options */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-3">
+          <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider border-b border-slate-800/80 pb-2">
+            Translation Style & Pronouns
+          </span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="modal-translation-style" className="text-[11px] text-slate-400 font-medium">Translation Style</label>
+              <select
+                id="modal-translation-style"
+                value={localConfig.translationStyle || 'semi-formal'}
+                onChange={(e) =>
+                  setLocalConfig((prev) => ({
+                    ...prev,
+                    translationStyle: e.target.value as TranslationStyle,
+                  }))
+                }
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="semi-formal">Semi-formal</option>
+                <option value="formal">Formal</option>
+                <option value="casual">Casual</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="modal-pronoun-options" className="text-[11px] text-slate-400 font-medium">Pronoun Options</label>
+              <select
+                id="modal-pronoun-options"
+                value={localConfig.pronounStyle || 'aku-kau'}
+                onChange={(e) =>
+                  setLocalConfig((prev) => ({
+                    ...prev,
+                    pronounStyle: e.target.value as PronounStyle,
+                  }))
+                }
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="aku-kau">Aku / Kau</option>
+                <option value="aku-kamu">Aku / Kamu</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+          </div>
+
+          {localConfig.pronounStyle === 'custom' && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-slate-400 font-medium">Custom Pronouns</label>
+              <input
+                type="text"
+                placeholder="e.g. Gua / Lu"
+                value={localConfig.customPronoun || ''}
+                onChange={(e) =>
+                  setLocalConfig((prev) => ({
+                    ...prev,
+                    customPronoun: e.target.value,
+                  }))
+                }
+                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          )}
         </div>
 
         {/* OCR & Translation Provider Selectors */}

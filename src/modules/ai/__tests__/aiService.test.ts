@@ -34,6 +34,9 @@ describe('AI Module & Provider Tests', () => {
       const customConfig: AiConfig = {
         ocrProvider: 'gemini',
         translationProvider: 'sumopod',
+        translationStyle: 'casual',
+        pronounStyle: 'aku-kamu',
+        customPronoun: '',
         gemini: { apiKey: 'test-gemini-key', model: 'gemini-1.5-pro' },
         sumopod: { apiKey: 'test-sumopod-key', baseUrl: 'https://custom.sumopod.com/v1', model: 'sumopod-v2' },
       };

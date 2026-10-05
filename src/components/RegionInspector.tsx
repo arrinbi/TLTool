@@ -23,6 +23,7 @@ import {
   Strikethrough,
 } from 'lucide-react';
 import type { TextRegion, CleaningOptions, CleaningMethod, ManhwaPage, RegionCategory, ManualTool, WorkflowStage } from '../types';
+import type { AiConfig, TranslationStyle, PronounStyle } from '../modules/ai/aiTypes';
 import type { QcReport, QcIssue } from '../modules/qc/qcService';
 import { CLEANING_LIMITATIONS_NOTICE } from '../modules/cleaning/cleaningService';
 import {
@@ -56,6 +57,8 @@ interface RegionInspectorProps {
   onTranslateRegion?: (regionId: string) => void;
   onTranslateAllRegions?: () => void;
   onTypesetAllRegions?: () => void;
+  aiConfig?: AiConfig;
+  onChangeAiConfig?: (newConfig: AiConfig) => void;
   onClearTypesetting?: () => void;
   customFonts?: CustomFont[];
   defaultFontFamily?: string;
@@ -105,6 +108,8 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onTranslateRegion,
   onTranslateAllRegions,
   onTypesetAllRegions,
+  aiConfig,
+  onChangeAiConfig,
   onClearTypesetting,
   customFonts = [],
   defaultFontFamily = 'sans-serif',
@@ -1138,6 +1143,74 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
+          {/* Translation Options Section */}
+          {aiConfig && onChangeAiConfig && (
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-3">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Translation Style & Pronouns
+              </span>
+
+              {/* Translation Style */}
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="translation-style" className="text-xs text-slate-300 font-medium">Translation Style</label>
+                <select
+                  id="translation-style"
+                  value={aiConfig.translationStyle || 'semi-formal'}
+                  onChange={(e) =>
+                    onChangeAiConfig({
+                      ...aiConfig,
+                      translationStyle: e.target.value as TranslationStyle,
+                    })
+                  }
+                  className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="semi-formal">Semi-formal</option>
+                  <option value="formal">Formal</option>
+                  <option value="casual">Casual</option>
+                </select>
+              </div>
+
+              {/* Pronoun Options */}
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="pronoun-options" className="text-xs text-slate-300 font-medium">Pronoun Options</label>
+                <select
+                  id="pronoun-options"
+                  value={aiConfig.pronounStyle || 'aku-kau'}
+                  onChange={(e) =>
+                    onChangeAiConfig({
+                      ...aiConfig,
+                      pronounStyle: e.target.value as PronounStyle,
+                    })
+                  }
+                  className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="aku-kau">Aku / Kau</option>
+                  <option value="aku-kamu">Aku / Kamu</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+
+              {/* Custom Pronouns Input */}
+              {aiConfig.pronounStyle === 'custom' && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] text-slate-400 font-medium">Custom Pronouns</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Gua / Lu"
+                    value={aiConfig.customPronoun || ''}
+                    onChange={(e) =>
+                      onChangeAiConfig({
+                        ...aiConfig,
+                        customPronoun: e.target.value,
+                      })
+                    }
+                    className="bg-slate-900 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Bulk Actions for Translation */}
           <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -1569,6 +1642,28 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
       </div>
 
       <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-5">
+        {/* Selection Tool Section (OCR) */}
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Selection Tool
+          </span>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => onSelectManualTool?.('rectangle')}
+              className={`w-full px-2.5 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                manualTool === 'rectangle'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+              }`}
+              title="Rectangle Tool"
+            >
+              <Square className="w-3.5 h-3.5" />
+              <span>Rectangle Selection Tool</span>
+            </button>
+          </div>
+        </div>
+
         {/* OCR Actions Section */}
         <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">

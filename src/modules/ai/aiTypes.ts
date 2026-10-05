@@ -2,6 +2,8 @@ import type { BoundingBox, TextRegion } from '../../types';
 
 export type OcrProviderType = 'tesseract' | 'gemini' | 'sumopod';
 export type TranslationProviderType = 'mymemory' | 'gemini' | 'sumopod';
+export type TranslationStyle = 'semi-formal' | 'formal' | 'casual';
+export type PronounStyle = 'aku-kau' | 'aku-kamu' | 'custom';
 
 export interface GeminiConfig {
   apiKey: string;
@@ -17,6 +19,9 @@ export interface SumoPodConfig {
 export interface AiConfig {
   ocrProvider: OcrProviderType;
   translationProvider: TranslationProviderType;
+  translationStyle: TranslationStyle;
+  pronounStyle: PronounStyle;
+  customPronoun?: string;
   gemini: GeminiConfig;
   sumopod: SumoPodConfig;
 }
@@ -24,6 +29,9 @@ export interface AiConfig {
 export const DEFAULT_AI_CONFIG: AiConfig = {
   ocrProvider: 'tesseract',
   translationProvider: 'mymemory',
+  translationStyle: 'semi-formal',
+  pronounStyle: 'aku-kau',
+  customPronoun: '',
   gemini: {
     apiKey: '',
     model: 'gemini-2.5-flash',
@@ -49,6 +57,9 @@ export function loadAiConfig(): AiConfig {
     return {
       ocrProvider: parsed.ocrProvider || DEFAULT_AI_CONFIG.ocrProvider,
       translationProvider: parsed.translationProvider || DEFAULT_AI_CONFIG.translationProvider,
+      translationStyle: parsed.translationStyle || DEFAULT_AI_CONFIG.translationStyle,
+      pronounStyle: parsed.pronounStyle || DEFAULT_AI_CONFIG.pronounStyle,
+      customPronoun: parsed.customPronoun ?? DEFAULT_AI_CONFIG.customPronoun,
       gemini: {
         apiKey: parsed.gemini?.apiKey || '',
         model: parsed.gemini?.model || DEFAULT_AI_CONFIG.gemini.model,
