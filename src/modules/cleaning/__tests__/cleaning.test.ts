@@ -174,6 +174,93 @@ describe('Cleaning Engine Unit & Realistic Artwork Tests', () => {
     });
   });
 
+  describe('Cleaning Engine Dispatching and Routing Tests', () => {
+    it('routes method="solid-white" to solid fill with chosen fillColor', async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, 50, 50);
+
+      const canvasUrl = canvas.toDataURL('image/png');
+      const bbox: BoundingBox = { x: 10, y: 10, width: 20, height: 20 };
+      const options: CleaningOptions = {
+        method: 'solid-white',
+        fillColor: '#ff0000',
+        padding: 0,
+        isManualRegion: true,
+      };
+
+      const resultUrl = await cleanImageRegion(canvasUrl, bbox, options);
+      expect(resultUrl).toBeDefined();
+      expect(resultUrl).not.toBe(canvasUrl);
+    });
+
+    it('routes method="border-sample" to fill with sampled border color', async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#00ff00'; // Green background
+      ctx.fillRect(0, 0, 50, 50);
+
+      const canvasUrl = canvas.toDataURL('image/png');
+      const bbox: BoundingBox = { x: 10, y: 10, width: 20, height: 20 };
+      const options: CleaningOptions = {
+        method: 'border-sample',
+        padding: 0,
+        isManualRegion: true,
+      };
+
+      const resultUrl = await cleanImageRegion(canvasUrl, bbox, options);
+      expect(resultUrl).toBeDefined();
+      expect(resultUrl).not.toBe(canvasUrl);
+    });
+
+    it('routes method="lama" to inpaintLaMa and throws error when ONNX runtime/model is missing', async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 50, 50);
+
+      const canvasUrl = canvas.toDataURL('image/png');
+      const bbox: BoundingBox = { x: 10, y: 10, width: 20, height: 20 };
+      const options: CleaningOptions = {
+        method: 'lama',
+        padding: 0,
+        isManualRegion: true,
+      };
+
+      await expect(cleanImageRegion(canvasUrl, bbox, options)).rejects.toThrow(
+        /LaMa AI inpainting engine is not available/i
+      );
+    });
+
+    it('routes method="migan" to inpaintMIGAN and throws error when ONNX runtime/model is missing', async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 50, 50);
+
+      const canvasUrl = canvas.toDataURL('image/png');
+      const bbox: BoundingBox = { x: 10, y: 10, width: 20, height: 20 };
+      const options: CleaningOptions = {
+        method: 'migan',
+        padding: 0,
+        isManualRegion: true,
+      };
+
+      await expect(cleanImageRegion(canvasUrl, bbox, options)).rejects.toThrow(
+        /MI-GAN AI inpainting engine is not available/i
+      );
+    });
+  });
+
   describe('OpenCV Telea Cleaning Engine Path', () => {
     it('inpaintOpenCVTelea removes dark text in white speech bubble cleanly while preserving outer border', async () => {
       // 80x40 canvas with white speech bubble, black outline, and dark text
