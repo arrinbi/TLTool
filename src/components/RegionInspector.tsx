@@ -37,6 +37,8 @@ interface RegionInspectorProps {
   page: ManhwaPage | null;
   selectedRegionId: string | null;
   activeStage?: WorkflowStage;
+  cleaningMethod?: CleaningMethod;
+  onChangeCleaningMethod?: (method: CleaningMethod) => void;
   onSelectRegion: (id: string | null) => void;
   onUpdateRegion: (region: TextRegion) => void;
   onDeleteRegion: (id: string) => void;
@@ -101,6 +103,8 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onSelectBrushSize,
   manualCategory: _manualCategory,
   onSelectManualCategory: _onSelectManualCategory,
+  cleaningMethod: propsCleaningMethod,
+  onChangeCleaningMethod,
   onRunOcr,
   onRunBubbleDetection: _onRunBubbleDetection,
   onRunOcrOnRegion,
@@ -134,7 +138,13 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onExportSinglePagePng,
   onNavigateToStage,
 }) => {
-  const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('smart-fill');
+  const [localCleaningMethod, setLocalCleaningMethod] = useState<CleaningMethod>('smart-fill');
+  const cleaningMethod = propsCleaningMethod ?? localCleaningMethod;
+  const setCleaningMethod = (method: CleaningMethod) => {
+    setLocalCleaningMethod(method);
+    onChangeCleaningMethod?.(method);
+  };
+
   const [padding, setPadding] = useState<number>(3);
   const [fillColor, setFillColor] = useState<string>('#ffffff');
   const [showLimitationsModal, setShowLimitationsModal] = useState<boolean>(false);

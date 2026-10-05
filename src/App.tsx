@@ -3,6 +3,7 @@ import type {
   ManhwaPage,
   TextRegion,
   CleaningOptions,
+  CleaningMethod,
   WorkflowStage,
   BoundingBox,
   RegionCategory,
@@ -58,6 +59,7 @@ export function App() {
   const [manualTool, setManualTool] = useState<ManualTool>('rectangle');
   const [brushSize, setBrushSize] = useState<number>(15);
   const [manualCategory, setManualCategory] = useState<RegionCategory>('bubble-oval');
+  const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('smart-fill');
   const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
 
   // Custom Font Management State
@@ -700,9 +702,9 @@ export function App() {
 
       if (activeStage === 'cleaning') {
         // Cleaning Stage: Drawing a temporary selection executes cleaning on targetPage.cleanedUrl directly
-        // without creating or appending new TextRegions to targetPage.regions.
+        // using the selected cleaning engine method without creating or appending new TextRegions to targetPage.regions.
         const effectiveOptions: CleaningOptions = {
-          method: 'smart-fill',
+          method: cleaningMethod,
           padding: 3,
           isManualRegion: true,
           category: category || manualCategory,
@@ -799,7 +801,7 @@ export function App() {
         );
       }
     },
-    [selectedPageId, pages, aiConfig, activeStage, manualCategory, brushSize, selectedRegionId]
+    [selectedPageId, pages, aiConfig, activeStage, manualCategory, brushSize, selectedRegionId, cleaningMethod]
   );
 
   const handleDeleteRegion = useCallback((regionId: string) => {
@@ -1262,6 +1264,8 @@ export function App() {
         <RegionInspector
           page={selectedPage}
           pages={pages}
+          cleaningMethod={cleaningMethod}
+          onChangeCleaningMethod={setCleaningMethod}
           selectedRegionId={selectedRegionId}
           activeStage={activeStage}
           onSelectRegion={setSelectedRegionId}
