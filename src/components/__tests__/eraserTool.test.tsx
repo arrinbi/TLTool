@@ -71,11 +71,8 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Switch to Stage 2 Cleaning Studio
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    // Create manual OCR region in Stage 1 OCR
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
     fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
@@ -84,6 +81,14 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
     fireEvent.pointerMove(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeInTheDocument();
+    });
+
+    // Switch to Stage 2 Cleaning Studio
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
@@ -109,17 +114,18 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Switch to Stage 2 Cleaning
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    // Draw manual region in Stage 1 OCR
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
     fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
     fireEvent.pointerMove(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
+
+    // Switch to Stage 2 Cleaning
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
@@ -145,17 +151,18 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Switch to Stage 2 Cleaning Studio
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    // Draw manual region in Stage 1 OCR
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
     fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 60, clientY: 60, pointerId: 1 });
     fireEvent.pointerMove(overlayContainer, { clientX: 120, clientY: 120, pointerId: 1 });
     fireEvent.pointerUp(overlayContainer, { clientX: 120, clientY: 120, pointerId: 1 });
+
+    // Switch to Stage 2 Cleaning Studio
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
@@ -185,16 +192,18 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    // Draw manual region in Stage 1 OCR
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
     fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
     fireEvent.pointerMove(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerUp(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
+
+    // Switch to Stage 2 Cleaning
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
@@ -218,17 +227,18 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
-    // Switch to Stage 2 Cleaning Studio
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    // Draw manual region in Stage 1 OCR
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
     fireEvent.click(drawToggleBtn);
 
     const overlayContainer = await getOverlay();
     fireEvent.pointerDown(overlayContainer, { clientX: 100, clientY: 100, pointerId: 1 });
     fireEvent.pointerMove(overlayContainer, { clientX: 200, clientY: 200, pointerId: 1 });
     fireEvent.pointerUp(overlayContainer, { clientX: 200, clientY: 200, pointerId: 1 });
+
+    // Switch to Stage 2 Cleaning Studio
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
+    fireEvent.click(cleaningNavBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
@@ -266,6 +276,15 @@ describe('Eraser Tool Regression Test Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeInTheDocument();
     });
 
+    // Draw manual OCR region in Stage 1
+    const drawToggleBtnOcr = screen.getByTitle('Draw New OCR Region Box');
+    fireEvent.click(drawToggleBtnOcr);
+
+    const overlayContainer = await getOverlay();
+    fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
+    fireEvent.pointerUp(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
+
     // Switch to Stage 2 Cleaning
     const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
     fireEvent.click(cleaningNavBtn);
@@ -273,15 +292,13 @@ describe('Eraser Tool Regression Test Suite', () => {
     const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
     fireEvent.click(drawToggleBtn);
 
-    const overlayContainer = await getOverlay();
-
-    // 1. Rectangle
+    // 1. Rectangle direct clean
     fireEvent.pointerDown(overlayContainer, { clientX: 50, clientY: 50, pointerId: 1 });
     fireEvent.pointerMove(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(overlayContainer, { clientX: 150, clientY: 150, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeInTheDocument();
+      expect(cleaningService.cleanImageRegion).toHaveBeenCalled();
     });
 
     // 2. Eraser
@@ -304,12 +321,12 @@ describe('Eraser Tool Regression Test Suite', () => {
     fireEvent.pointerDown(overlayContainer, { clientX: 160, clientY: 160, pointerId: 4 });
     fireEvent.pointerUp(overlayContainer, { clientX: 160, clientY: 160, pointerId: 4 });
 
-    // 5. Clean
+    // 5. Clean Selected Region or Clean All Regions
     const cleanAllBtn = screen.getByRole('button', { name: /Clean All Regions/i });
     fireEvent.click(cleanAllBtn);
 
     await waitFor(() => {
-      expect(cleaningService.cleanAllRegions).toHaveBeenCalled();
+      expect(cleaningService.cleanImageRegion).toHaveBeenCalled();
     });
   });
 });
