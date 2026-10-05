@@ -10,6 +10,18 @@ export interface CustomFont {
   fontFace?: FontFace;
 }
 
+export interface StoredFontRecord {
+  id: string;
+  displayName: string;
+  fileName: string;
+  familyName: string;
+  buffer: ArrayBuffer;
+  createdAt: number;
+}
+
+const DB_NAME = 'TLTool_Fonts_DB';
+const STORE_NAME = 'custom_fonts';
+
 const registeredFontsMap = new Map<string, CustomFont>();
 
 /**
@@ -17,6 +29,115 @@ const registeredFontsMap = new Map<string, CustomFont>();
  */
 export function getRegisteredCustomFonts(): CustomFont[] {
   return Array.from(registeredFontsMap.values());
+}
+
+function openFontDatabase(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function saveFontToIndexedDB(record: StoredFontRecord): Promise<void> {
+  try {
+    const db = await openFontDatabase();
+    if (!db) return;
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.put(record);
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (err) {
+    console.warn('Failed to save font to IndexedDB:', err);
+  }
+}
+
+export async function deleteFontFromIndexedDB(fontId: string): Promise<void> {
+  try {
+    const db = await openFontDatabase();
+    if (!db) return;
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.delete(fontId);
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (err) {
+    console.warn('Failed to delete font from IndexedDB:', err);
+  }
+}
+
+export async function loadSavedCustomFonts(): Promise<CustomFont[]> {
+  try {
+    const db = await openFontDatabase();
+    if (!db) return [];
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAll();
+
+    const records: StoredFontRecord[] = await new Promise((resolve) => {
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => resolve([]);
+    });
+
+    const loadedFonts: CustomFont[] = [];
+    for (const record of records) {
+      if (registeredFontsMap.has(record.id)) {
+        loadedFonts.push(registeredFontsMap.get(record.id)!);
+        continue;
+      }
+
+      let fontFace: FontFace | undefined;
+      if (typeof FontFace !== 'undefined') {
+        try {
+          fontFace = new FontFace(record.familyName, record.buffer);
+          await fontFace.load();
+          if (typeof document !== 'undefined' && document.fonts) {
+            document.fonts.add(fontFace);
+          }
+        } catch (err) {
+          console.warn(`Failed to re-load FontFace for ${record.fileName}:`, err);
+        }
+      }
+
+      const blob = new Blob([record.buffer], {
+        type: record.fileName.toLowerCase().endsWith('.otf') ? 'font/otf' : 'font/ttf',
+      });
+      const url = typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(blob) : '';
+
+      const customFont: CustomFont = {
+        id: record.id,
+        displayName: record.displayName,
+        fileName: record.fileName,
+        familyName: record.familyName,
+        url,
+        sourceType: 'custom',
+        fontFace,
+      };
+
+      registeredFontsMap.set(customFont.id, customFont);
+      loadedFonts.push(customFont);
+    }
+    return loadedFonts;
+  } catch (err) {
+    console.warn('Failed to load saved fonts from IndexedDB:', err);
+    return [];
+  }
 }
 
 /**
@@ -73,6 +194,17 @@ export async function registerFontFace(
   };
 
   registeredFontsMap.set(customFont.id, customFont);
+
+  // Persist font to IndexedDB
+  saveFontToIndexedDB({
+    id: customFont.id,
+    displayName,
+    fileName,
+    familyName,
+    buffer,
+    createdAt: Date.now(),
+  });
+
   return customFont;
 }
 
@@ -100,6 +232,7 @@ export function unregisterCustomFont(fontId: string): void {
   }
 
   registeredFontsMap.delete(fontId);
+  deleteFontFromIndexedDB(fontId);
 }
 
 /**

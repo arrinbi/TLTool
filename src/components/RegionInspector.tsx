@@ -63,6 +63,8 @@ interface RegionInspectorProps {
   customFonts?: CustomFont[];
   defaultFontFamily?: string;
   onChangeDefaultFontFamily?: (fontFamily: string) => void;
+  defaultFontSize?: number;
+  onChangeDefaultFontSize?: (fontSize: number) => void;
   onUploadFontFile?: (file: File) => Promise<UploadFontResult | void>;
   onRemoveCustomFont?: (fontId: string) => void;
   fontUploadStatus?: { message: string; isError?: boolean } | null;
@@ -114,6 +116,8 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   customFonts = [],
   defaultFontFamily = 'sans-serif',
   onChangeDefaultFontFamily,
+  defaultFontSize = 16,
+  onChangeDefaultFontSize,
   onUploadFontFile,
   onRemoveCustomFont,
   fontUploadStatus,
@@ -448,6 +452,33 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
                   </optgroup>
                 )}
               </select>
+            </div>
+
+            {/* Global Default Font Size Control */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-[11px] text-slate-400 font-medium">
+                <label htmlFor="global-default-font-size">Global Default Font Size</label>
+                <span className="text-slate-300 font-mono text-[11px]">{defaultFontSize} px</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="8"
+                  max="60"
+                  value={defaultFontSize}
+                  onChange={(e) => onChangeDefaultFontSize?.(Number(e.target.value))}
+                  className="flex-1 accent-indigo-500 cursor-pointer"
+                />
+                <input
+                  id="global-default-font-size"
+                  type="number"
+                  min="8"
+                  max="72"
+                  value={defaultFontSize}
+                  onChange={(e) => onChangeDefaultFontSize?.(Number(e.target.value) || 16)}
+                  className="w-14 bg-slate-900 border border-slate-800 text-slate-200 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-indigo-500"
+                />
+              </div>
             </div>
 
             {/* Registered Custom Fonts List */}
