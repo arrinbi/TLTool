@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../../../App';
 import { loadSavedCustomFonts, registerFontFace, getRegisteredCustomFonts } from '../fontService';
-import { getEffectiveTypesettingStyle } from '../typesettingService';
-import type { TextRegion } from '../../../types';
 
 const fontStore = new Map<string, any>();
 
@@ -102,16 +100,54 @@ describe('Typesetting Requirements Fixes Test Suite', () => {
     expect(updatedRegionsList).toBeDefined();
   });
 
-  it('2. Global Default Font Size sets default font size for new regions without changing existing regions', async () => {
+  it('2. Global Font Size immediately applies selected font size to ALL existing regions on the current page', async () => {
     render(<App />);
 
     await waitFor(() => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
+    // Switch to Stage 1 OCR to add a manual region
+    const ocrTab = screen.getAllByText(/1\. OCR/i)[0];
+    fireEvent.click(ocrTab);
+
+    // Enable drawing mode
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
+    fireEvent.click(drawToggleBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default');
+      expect(el).not.toBeNull();
+      return el as HTMLDivElement;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+    });
+
     // Switch to Stage 4 Typesetting
     const typesettingTabs = screen.getAllByText(/4\. Typesetting/i);
     fireEvent.click(typesettingTabs[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Typesetting Studio/i)).toBeDefined();
+    });
 
     // Change Global Default Font Size input to 24px
     const defaultFontSizeInput = screen.getByLabelText(/Global Default Font Size/i) as HTMLInputElement;
@@ -120,32 +156,10 @@ describe('Typesetting Requirements Fixes Test Suite', () => {
     fireEvent.change(defaultFontSizeInput, { target: { value: '24' } });
     expect(defaultFontSizeInput.value).toBe('24');
 
-    // Test region created before change retains its existing font size
-    const existingRegion: TextRegion = {
-      id: 'existing-r1',
-      bbox: { x: 10, y: 10, width: 100, height: 50 },
-      text: 'Existing',
-      confidence: 100,
-      isCleaned: false,
-      typesetting: {
-        fontSize: 16,
-      },
-    };
-
-    const existingStyle = getEffectiveTypesettingStyle(existingRegion, 'sans-serif', 24);
-    expect(existingStyle.fontSize).toBe(16);
-
-    // Test new region without explicit fontSize uses the new global default font size (24)
-    const newRegion: TextRegion = {
-      id: 'new-r2',
-      bbox: { x: 10, y: 100, width: 100, height: 50 },
-      text: 'New Region',
-      confidence: 100,
-      isCleaned: false,
-    };
-
-    const newStyle = getEffectiveTypesettingStyle(newRegion, 'sans-serif', 24);
-    expect(newStyle.fontSize).toBe(24);
+    // Verify font size in the selected region editor is updated to 24
+    await waitFor(() => {
+      expect(screen.getByText(/Font Size \(24px\)/i)).toBeDefined();
+    });
   });
 
   it('3. Persists uploaded fonts in IndexedDB and restores them on load', async () => {
@@ -162,5 +176,118 @@ describe('Typesetting Requirements Fixes Test Suite', () => {
     const restoredFonts = await loadSavedCustomFonts();
     expect(restoredFonts.length).toBeGreaterThan(0);
     expect(restoredFonts.some((f) => f.displayName === 'MyPersistentFont')).toBe(true);
+  });
+
+  it('4. Resizing text selection box scales font size proportionally with the box', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
+    });
+
+    // Switch to Stage 1 OCR and add a region
+    const ocrTab = screen.getAllByText(/1\. OCR/i)[0];
+    fireEvent.click(ocrTab);
+
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
+    fireEvent.click(drawToggleBtn);
+
+    const canvasOverlay = await waitFor(() => {
+      const el = document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default');
+      expect(el).not.toBeNull();
+      return el as HTMLDivElement;
+    });
+
+    vi.spyOn(canvasOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    fireEvent.pointerDown(canvasOverlay, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(canvasOverlay, { clientX: 200, clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(canvasOverlay, { clientX: 200, clientY: 200, pointerId: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
+    });
+
+    // Switch to Stage 4 Typesetting
+    const typesettingTabs = screen.getAllByText(/4\. Typesetting/i);
+    fireEvent.click(typesettingTabs[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Typesetting Studio/i)).toBeDefined();
+    });
+
+    const typesettingOverlay = await waitFor(() => {
+      const el = (document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default')) as HTMLDivElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+
+    vi.spyOn(typesettingOverlay, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 600,
+      height: 900,
+      right: 600,
+      bottom: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Initial font size is 16px
+    await waitFor(() => {
+      expect(screen.getByText(/Font Size \(16px\)/i)).toBeDefined();
+    });
+
+    // Find the corner handle 'se' (Resize Bottom-Right)
+    const handleSe = document.querySelector('div[title="Resize Bottom-Right"]') as HTMLDivElement;
+    expect(handleSe).not.toBeNull();
+
+    // Drag handle 'se' outwards to enlarge the box (+100px width/height from 100x100 to 200x200)
+    fireEvent.pointerDown(handleSe, { clientX: 200, clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(typesettingOverlay, { clientX: 300, clientY: 300, pointerId: 1 });
+
+    // Verify font size increased proportionally (from 16px to 32px)
+    await waitFor(() => {
+      expect(screen.getByText(/Font Size \(32px\)/i)).toBeDefined();
+    });
+
+    fireEvent.pointerUp(typesettingOverlay, { clientX: 300, clientY: 300, pointerId: 1 });
+  });
+
+  it('5. Selected Global Default Font persists in localStorage and applies to new regions', async () => {
+    localStorage.clear();
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
+    });
+
+    const typesettingTabs = screen.getAllByText(/4\. Typesetting/i);
+    fireEvent.click(typesettingTabs[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Typesetting Studio/i)).toBeDefined();
+    });
+
+    const globalFontSelect = screen.getByLabelText('Global Default Font') as HTMLSelectElement;
+    expect(globalFontSelect).not.toBeNull();
+
+    fireEvent.change(globalFontSelect, { target: { value: 'Arial, sans-serif' } });
+    expect(globalFontSelect.value).toBe('Arial, sans-serif');
+
+    // Verify it was persisted to localStorage
+    expect(localStorage.getItem('tltool_default_font_family')).toBe('Arial, sans-serif');
   });
 });

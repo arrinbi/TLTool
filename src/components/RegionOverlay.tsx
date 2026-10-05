@@ -6,6 +6,7 @@ import {
   renderRegionTypesetting,
   getEffectiveTypesettingBounds,
   getRenderedTextDetails,
+  getEffectiveTypesettingStyle,
 } from '../modules/typesetting/typesettingService';
 
 interface RegionOverlayProps {
@@ -95,6 +96,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const [dragStartImgPos, setDragStartImgPos] = useState<{ x: number; y: number } | null>(null);
   const [initialBounds, setInitialBounds] = useState<BoundingBox | null>(null);
+  const [initialFontSize, setInitialFontSize] = useState<number | null>(null);
 
   const scaleX = displayWidth / (imageWidth || 1);
   const scaleY = displayHeight / (imageHeight || 1);
@@ -255,6 +257,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
       const handle = activeHandle;
       const startPos = dragStartImgPos;
       const initB = initialBounds;
+      const initFont = initialFontSize ?? 16;
 
       dragRafId.current = requestAnimationFrame(() => {
         dragRafId.current = null;
@@ -314,10 +317,26 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
           }
         }
 
+        let newFontSize = targetRegion.typesetting?.fontSize ?? initFont;
+        if (handle !== 'body') {
+          let scale = 1;
+          if (handle === 'nw' || handle === 'ne' || handle === 'sw' || handle === 'se') {
+            scale = (newW / initB.width + newH / initB.height) / 2;
+          } else if (handle === 'e' || handle === 'w') {
+            scale = newW / initB.width;
+          } else if (handle === 'n' || handle === 's') {
+            scale = newH / initB.height;
+          }
+          const MIN_FONT_SIZE = 8;
+          const MAX_FONT_SIZE = 72;
+          newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.round(initFont * scale)));
+        }
+
         onUpdateRegion({
           ...targetRegion,
           typesetting: {
             ...targetRegion.typesetting,
+            fontSize: newFontSize,
             bounds: {
               x: Math.round(newX),
               y: Math.round(newY),
@@ -356,10 +375,12 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
 
     const imgPos = pointerToImage(e);
     const bounds = getEffectiveTypesettingBounds(region);
+    const style = getEffectiveTypesettingStyle(region, defaultFontFamily);
     setActiveHandle(handle);
     setActiveRegionId(region.id);
     setDragStartImgPos(imgPos);
     setInitialBounds(bounds);
+    setInitialFontSize(style.fontSize);
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -371,14 +392,11 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
       } catch {
         // Ignore
       }
-      if (dragRafId.current !== null) {
-        cancelAnimationFrame(dragRafId.current);
-        dragRafId.current = null;
-      }
       setActiveRegionId(null);
       setActiveHandle(null);
       setDragStartImgPos(null);
       setInitialBounds(null);
+      setInitialFontSize(null);
     }
 
     if (isDrawing) {
