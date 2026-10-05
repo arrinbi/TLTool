@@ -140,37 +140,38 @@ export function analyzePatchBackground(
     return { isUniform: true, avgColor: { r: 255, g: 255, b: 255 } };
   }
 
-  // Trimmed mean to ignore border outline strokes or outlier pixels
+  // Sort unmasked pixels by luminance ascending
   unmaskedPixels.sort((a, b) => a.lum - b.lum);
-  const trimStart = Math.floor(unmaskedPixels.length * 0.15);
-  const trimEnd = Math.ceil(unmaskedPixels.length * 0.85);
 
-  let sumR = 0, sumG = 0, sumB = 0, count = 0;
-  for (let i = trimStart; i < trimEnd; i++) {
-    sumR += unmaskedPixels[i].r;
-    sumG += unmaskedPixels[i].g;
-    sumB += unmaskedPixels[i].b;
-    count++;
+  // Focus on top 60% highest luminance pixels to filter out dark text edges / border outlines
+  const startIdx = Math.floor(unmaskedPixels.length * 0.4);
+  const candidates = unmaskedPixels.slice(startIdx);
+  const count = candidates.length || unmaskedPixels.length;
+  const pixelsToUse = candidates.length > 0 ? candidates : unmaskedPixels;
+
+  let sumR = 0, sumG = 0, sumB = 0;
+  for (const p of pixelsToUse) {
+    sumR += p.r;
+    sumG += p.g;
+    sumB += p.b;
   }
 
-  if (count === 0) {
-    for (const p of unmaskedPixels) {
-      sumR += p.r;
-      sumG += p.g;
-      sumB += p.b;
-      count++;
-    }
-  }
+  let avgR = Math.round(sumR / count);
+  let avgG = Math.round(sumG / count);
+  let avgB = Math.round(sumB / count);
 
-  const avgR = Math.round(sumR / count);
-  const avgG = Math.round(sumG / count);
-  const avgB = Math.round(sumB / count);
+  // Snap near-white speech bubble background to pure white
+  if (avgR >= 240 && avgG >= 240 && avgB >= 240) {
+    avgR = 255;
+    avgG = 255;
+    avgB = 255;
+  }
 
   const avgLum = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
   let varianceSum = 0;
 
-  for (let i = trimStart; i < trimEnd; i++) {
-    const diff = unmaskedPixels[i].lum - avgLum;
+  for (const p of pixelsToUse) {
+    const diff = p.lum - avgLum;
     varianceSum += diff * diff;
   }
 
@@ -266,31 +267,32 @@ export function sampleBorderColor(
     return { r: 255, g: 255, b: 255, a: 255, hex: '#ffffff' };
   }
 
-  // Sort by luminance and take interquartile / trimmed mean to discard outline strokes
+  // Sort by luminance ascending
   sampledPixels.sort((a, b) => a.lum - b.lum);
-  const startIdx = Math.floor(sampledPixels.length * 0.2);
-  const endIdx = Math.ceil(sampledPixels.length * 0.8);
 
-  let totalR = 0, totalG = 0, totalB = 0, count = 0;
-  for (let i = startIdx; i < endIdx; i++) {
-    totalR += sampledPixels[i].r;
-    totalG += sampledPixels[i].g;
-    totalB += sampledPixels[i].b;
-    count++;
+  // Focus on top 60% highest luminance pixels to filter out dark border outlines/text edges
+  const startIdx = Math.floor(sampledPixels.length * 0.4);
+  const candidates = sampledPixels.slice(startIdx);
+  const pixelsToUse = candidates.length > 0 ? candidates : sampledPixels;
+  const count = pixelsToUse.length;
+
+  let totalR = 0, totalG = 0, totalB = 0;
+  for (const p of pixelsToUse) {
+    totalR += p.r;
+    totalG += p.g;
+    totalB += p.b;
   }
 
-  if (count === 0) {
-    count = sampledPixels.length;
-    for (const p of sampledPixels) {
-      totalR += p.r;
-      totalG += p.g;
-      totalB += p.b;
-    }
-  }
+  let avgR = Math.round(totalR / count);
+  let avgG = Math.round(totalG / count);
+  let avgB = Math.round(totalB / count);
 
-  const avgR = Math.round(totalR / count);
-  const avgG = Math.round(totalG / count);
-  const avgB = Math.round(totalB / count);
+  // Snap near-white speech bubble background to pure white
+  if (avgR >= 240 && avgG >= 240 && avgB >= 240) {
+    avgR = 255;
+    avgG = 255;
+    avgB = 255;
+  }
 
   const toHex = (c: number) => c.toString(16).padStart(2, '0');
   const hex = `#${toHex(avgR)}${toHex(avgG)}${toHex(avgB)}`;
@@ -795,7 +797,8 @@ export async function cleanImageRegion(
   options: CleaningOptions
 ): Promise<string> {
   const { canvas, ctx } = await createFullResCanvas(currentCleanedUrl);
-  const padding = options.padding ?? 2;
+  // Ensure sufficient padding (minimum 8px) for accurate background sampling & inpainting context
+  const padding = Math.max(options.padding ?? 3, 8);
 
   const targetX = Math.max(0, bbox.x - padding);
   const targetY = Math.max(0, bbox.y - padding);
@@ -835,7 +838,7 @@ export async function cleanImageRegion(
     isUniformBg = patchAnalysis.isUniform;
     avgBgColor = patchAnalysis.avgColor;
   } else if (options.isManualRegion) {
-    // Manually selected cleaning area is authoritative and must cover the full selection rather than shrinking to OCR bounding box
+    // Manually selected cleaning area is authoritative and covers the full selection
     targetMask = new Uint8Array(targetW * targetH);
     const offsetX = bbox.x - targetX;
     const offsetY = bbox.y - targetY;
@@ -882,8 +885,8 @@ export async function cleanImageRegion(
   const chosenColor = parseHex(hexColor);
 
   // UNIFIED PIPELINE FOR BOTH BRUSH AND RECTANGLE:
-  // 1. targetMask: Exact pixels intended for removal (brush stroke or text mask)
-  // 2. inpaintContextMask: Expanded area (2px dilation) given to inpainting engines so they have surrounding background context
+  // 1. targetMask: Exact pixels intended for removal (brush stroke or selection / text mask)
+  // 2. inpaintContextMask: Expanded area (2px dilation) for AI inpainting engines
   // 3. finalCompositingMask: Strictly targetMask, ensuring pixels outside targetMask are 100% restored from original image
   const finalCompositingMask = targetMask;
   const inpaintContextMask = new Uint8Array(targetW * targetH);
@@ -910,15 +913,17 @@ export async function cleanImageRegion(
   } else if (options.method === 'migan') {
     await inpaintMIGAN(patchImageData, inpaintContextMask);
   } else if (options.method === 'solid-white') {
-    cleanBubbleText(patchImageData, inpaintContextMask, chosenColor);
+    cleanBubbleText(patchImageData, targetMask, chosenColor);
   } else if (options.method === 'border-sample') {
-    cleanBubbleText(patchImageData, inpaintContextMask, avgBgColor);
+    cleanBubbleText(patchImageData, targetMask, avgBgColor);
   } else if (options.method === 'opencv-telea') {
     await inpaintOpenCVTelea(patchImageData, inpaintContextMask);
   } else {
-    // smart-fill or default method
+    // smart-fill or default method:
+    // If background is uniform (e.g. speech bubble), fill with pure background color.
+    // Otherwise, use OpenCV Telea inpainting for complex background artwork.
     if (isUniformBg) {
-      cleanBubbleText(patchImageData, inpaintContextMask, avgBgColor);
+      cleanBubbleText(patchImageData, targetMask, avgBgColor);
     } else {
       await inpaintOpenCVTelea(patchImageData, inpaintContextMask);
     }
@@ -940,6 +945,10 @@ export async function cleanImageRegion(
   ctx.putImageData(patchImageData, targetX, targetY);
 
   return new Promise((resolve) => {
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+      resolve(canvas.toDataURL('image/png'));
+      return;
+    }
     canvas.toBlob((blob) => {
       if (blob) {
         resolve(URL.createObjectURL(blob));
