@@ -134,7 +134,7 @@ export const RegionInspector: React.FC<RegionInspectorProps> = ({
   onExportSinglePagePng,
   onNavigateToStage,
 }) => {
-  const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('opencv-telea');
+  const [cleaningMethod, setCleaningMethod] = useState<CleaningMethod>('smart-fill');
   const [padding, setPadding] = useState<number>(3);
   const [fillColor, setFillColor] = useState<string>('#ffffff');
   const [showLimitationsModal, setShowLimitationsModal] = useState<boolean>(false);

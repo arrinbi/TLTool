@@ -656,7 +656,7 @@ export function App() {
         // Cleaning Stage: Drawing a temporary selection executes cleaning on targetPage.cleanedUrl directly
         // without creating or appending new TextRegions to targetPage.regions.
         const effectiveOptions: CleaningOptions = {
-          method: 'opencv-telea',
+          method: 'smart-fill',
           padding: 3,
           isManualRegion: true,
           category: category || manualCategory,
