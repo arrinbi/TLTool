@@ -39,7 +39,7 @@ import {
   getEffectiveTypesettingStyle,
 } from './modules/typesetting/typesettingService';
 import type { CustomFont } from './modules/typesetting/fontService';
-import { processFontUpload, unregisterCustomFont } from './modules/typesetting/fontService';
+import { processFontUpload, unregisterCustomFont, loadSavedCustomFonts } from './modules/typesetting/fontService';
 
 import type { QcReport, QcIssue } from './modules/qc/qcService';
 import { runQualityControl } from './modules/qc/qcService';
@@ -59,7 +59,17 @@ export function App() {
 
   // Custom Font Management State
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
+
+  // Restore persisted custom fonts from IndexedDB on startup
+  useEffect(() => {
+    loadSavedCustomFonts().then((loaded) => {
+      if (loaded.length > 0) {
+        setCustomFonts(loaded);
+      }
+    });
+  }, []);
   const [defaultFontFamily, setDefaultFontFamily] = useState<string>('sans-serif');
+  const [defaultFontSize, setDefaultFontSize] = useState<number>(16);
   const [fontUploadStatus, setFontUploadStatus] = useState<{ message: string; isError?: boolean } | null>(null);
 
   // AI Provider Config State
@@ -366,6 +376,9 @@ export function App() {
         text: r.text || '',
         isManual: false,
         source: 'auto' as const,
+        typesetting: {
+          fontSize: defaultFontSize,
+        },
       }));
 
       if (existingBubbles.length > 0) {
@@ -635,6 +648,10 @@ export function App() {
       const targetPage = pages.find((p) => p.id === selectedPageId);
       if (!targetPage) return;
 
+      if (activeStage === 'typesetting' || activeStage === 'qc') {
+        return;
+      }
+
       if (activeStage === 'cleaning') {
         // Cleaning Stage: Drawing a temporary selection executes cleaning on targetPage.cleanedUrl directly
         // without creating or appending new TextRegions to targetPage.regions.
@@ -690,6 +707,9 @@ export function App() {
         isBrush: extra?.isBrush,
         brushPoints: extra?.brushPoints,
         brushSize: extra?.brushSize,
+        typesetting: {
+          fontSize: defaultFontSize,
+        },
       };
 
       setPages((prev) =>
@@ -1235,6 +1255,8 @@ export function App() {
           customFonts={customFonts}
           defaultFontFamily={defaultFontFamily}
           onChangeDefaultFontFamily={setDefaultFontFamily}
+          defaultFontSize={defaultFontSize}
+          onChangeDefaultFontSize={setDefaultFontSize}
           onUploadFontFile={handleUploadFontFile}
           onRemoveCustomFont={handleRemoveCustomFont}
           fontUploadStatus={fontUploadStatus}

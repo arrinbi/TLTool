@@ -78,11 +78,13 @@ export function getEffectiveTypesettingBounds(region: TextRegion): BoundingBox {
  */
 export function getEffectiveTypesettingStyle(
   region: TextRegion,
-  defaultFontFamily?: string
+  defaultFontFamily?: string,
+  defaultFontSize?: number
 ): TypesettingStyle {
   const align = region.typesetting?.align ?? (region.category === 'text-outside' ? 'left' : 'center');
   const vAlign = region.typesetting?.vAlign ?? 'middle';
   const fallbackFont = defaultFontFamily || DEFAULT_TYPESETTING_STYLE.fontFamily;
+  const fallbackFontSize = defaultFontSize ?? DEFAULT_TYPESETTING_STYLE.fontSize;
   const bounds = getEffectiveTypesettingBounds(region);
   const padding = region.typesetting?.padding ?? DEFAULT_TYPESETTING_STYLE.padding;
 
@@ -99,7 +101,7 @@ export function getEffectiveTypesettingStyle(
     bounds,
     padding,
     fontFamily: region.typesetting?.fontFamily ?? fallbackFont,
-    fontSize: region.typesetting?.fontSize ?? DEFAULT_TYPESETTING_STYLE.fontSize,
+    fontSize: region.typesetting?.fontSize ?? fallbackFontSize,
     fontWeight: region.typesetting?.fontWeight ?? DEFAULT_TYPESETTING_STYLE.fontWeight,
     italic: region.typesetting?.italic ?? DEFAULT_TYPESETTING_STYLE.italic,
     underline: region.typesetting?.underline ?? DEFAULT_TYPESETTING_STYLE.underline,
@@ -246,10 +248,11 @@ export function getRenderedTextDetails(
   region: TextRegion,
   overrideStyle?: Partial<TypesettingStyle>,
   defaultFontFamily?: string,
+  defaultFontSize?: number,
   ctx?: CanvasRenderingContext2D | null
 ): RenderedTextDetails {
   const style = {
-    ...getEffectiveTypesettingStyle(region, defaultFontFamily),
+    ...getEffectiveTypesettingStyle(region, defaultFontFamily, defaultFontSize),
     ...overrideStyle,
   };
 
@@ -262,7 +265,7 @@ export function getRenderedTextDetails(
   const innerHeight = Math.max(10, bounds.height - padding * 2);
   const innerBounds: BoundingBox = { x: innerX, y: innerY, width: innerWidth, height: innerHeight };
 
-  const { fontSize, lines } = getRegionTypesettingLayout(region, overrideStyle, defaultFontFamily, ctx);
+  const { fontSize, lines } = getRegionTypesettingLayout(region, overrideStyle, defaultFontFamily, defaultFontSize, ctx);
   const lineSpacing = fontSize * style.lineHeight;
   const totalTextHeight = lines.length * lineSpacing;
 
@@ -409,6 +412,7 @@ export function getRegionTypesettingLayout(
   region: TextRegion,
   overrideStyle?: Partial<TypesettingStyle>,
   defaultFontFamily?: string,
+  defaultFontSize?: number,
   ctx?: CanvasRenderingContext2D | null
 ): { fontSize: number; lines: string[] } {
   const textToRender = region.translatedText || region.translation;
@@ -417,7 +421,7 @@ export function getRegionTypesettingLayout(
   }
 
   const style = {
-    ...getEffectiveTypesettingStyle(region, defaultFontFamily),
+    ...getEffectiveTypesettingStyle(region, defaultFontFamily, defaultFontSize),
     ...overrideStyle,
   };
 
@@ -478,20 +482,21 @@ export function renderRegionTypesetting(
   ctx: CanvasRenderingContext2D,
   region: TextRegion,
   overrideStyle?: Partial<TypesettingStyle>,
-  defaultFontFamily?: string
+  defaultFontFamily?: string,
+  defaultFontSize?: number
 ): void {
   const textToRender = region.translatedText || region.translation;
   if (!textToRender || !textToRender.trim()) return;
 
   const style = {
-    ...getEffectiveTypesettingStyle(region, defaultFontFamily),
+    ...getEffectiveTypesettingStyle(region, defaultFontFamily, defaultFontSize),
     ...overrideStyle,
   };
 
   const bounds = style.bounds || getEffectiveTypesettingBounds(region);
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
 
-  const { fontSize, lines } = getRegionTypesettingLayout(region, overrideStyle, defaultFontFamily, ctx);
+  const { fontSize, lines } = getRegionTypesettingLayout(region, overrideStyle, defaultFontFamily, defaultFontSize, ctx);
 
   if (lines.length === 0 || fontSize <= 0) return;
 

@@ -54,7 +54,7 @@ describe('Custom Font Typesetting Workflow Integration', () => {
     });
 
     // Check Global Default Font dropdown contains custom fonts
-    const defaultFontDropdown = screen.getByLabelText(/Global Default Font/i) as HTMLSelectElement;
+    const defaultFontDropdown = screen.getByLabelText(/^Global Default Font$/i) as HTMLSelectElement;
     expect(defaultFontDropdown).not.toBeNull();
 
     const options = Array.from(defaultFontDropdown.options).map((o) => o.text);

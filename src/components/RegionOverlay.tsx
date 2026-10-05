@@ -223,7 +223,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
 
-    if (isDrawingMode) {
+    if (isDrawingMode && activeStage !== 'typesetting' && activeStage !== 'qc') {
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
@@ -388,6 +388,14 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         }
       } catch {
         // Ignore fallback
+      }
+
+      if (activeStage === 'typesetting' || activeStage === 'qc') {
+        setIsDrawing(false);
+        setDrawStart(null);
+        setDrawCurrent(null);
+        setBrushPoints([]);
+        return;
       }
 
       if (manualTool === 'eraser') {
