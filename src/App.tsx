@@ -24,7 +24,7 @@ import {
 import { cleanImageRegion, cleanAllRegions } from './modules/cleaning/cleaningService';
 import { pushPageHistory, undoPageHistory, redoPageHistory } from './utils/history';
 import { cropImageSource, transformRegionsForCrop } from './utils/cropUtils';
-import { subtractEraserFromRegion, mergeBrushStrokeToRegion } from './utils/brushUtils';
+import { subtractEraserFromRegion } from './utils/brushUtils';
 
 import type { AiConfig } from './modules/ai/aiTypes';
 import { loadAiConfig, saveAiConfig } from './modules/ai/aiTypes';
@@ -636,57 +636,42 @@ export function App() {
       if (!targetPage) return;
 
       if (activeStage === 'cleaning') {
-        // In Cleaning Stage, drawing a manual selection creates or modifies an uncleaned TextRegion
-        // without running OCR or bubble detection.
-        if (extra?.isBrush && extra.brushPoints && selectedRegionId) {
-          const selectedRegion = targetPage.regions.find((r) => r.id === selectedRegionId);
-          if (selectedRegion && !selectedRegion.isCleaned) {
-            const merged = mergeBrushStrokeToRegion(
-              selectedRegion,
-              extra.brushPoints,
-              extra.brushSize || brushSize,
-              targetPage.width,
-              targetPage.height
-            );
-            setPages((prev) =>
-              prev.map((p) => {
-                if (p.id !== targetPage.id) return p;
-                return {
-                  ...p,
-                  regions: p.regions.map((r) => (r.id === selectedRegionId ? merged : r)),
-                };
-              })
-            );
-            return;
-          }
-        }
-
-        const pageId = targetPage.id;
-        const newRegion: TextRegion = {
-          id: `region-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          bbox,
-          text: '',
-          confidence: 100,
-          isCleaned: false,
-          isManual: true,
-          source: 'manual',
+        // Cleaning Stage: Drawing a temporary selection executes cleaning on targetPage.cleanedUrl directly
+        // without creating or appending new TextRegions to targetPage.regions.
+        const effectiveOptions: CleaningOptions = {
+          method: 'opencv-telea',
+          padding: 3,
+          isManualRegion: true,
           category: category || manualCategory,
           brushMask: extra?.brushMask,
           isBrush: extra?.isBrush,
           brushPoints: extra?.brushPoints,
-          brushSize: extra?.brushSize,
+          brushSize: extra?.brushSize || brushSize,
         };
 
         setPages((prev) =>
-          prev.map((p) => {
-            if (p.id !== pageId) return p;
-            return {
-              ...p,
-              regions: [...p.regions, newRegion],
-            };
-          })
+          prev.map((p) => (p.id === targetPage.id ? { ...p, isProcessing: true, processingMessage: 'Cleaning selection...' } : p))
         );
-        setSelectedRegionId(newRegion.id);
+
+        try {
+          const newCleanedUrl = await cleanImageRegion(targetPage.cleanedUrl, bbox, effectiveOptions);
+          setPages((prev) =>
+            prev.map((p) => {
+              if (p.id !== targetPage.id) return p;
+              return pushPageHistory(
+                { ...p, isProcessing: false, processingMessage: undefined },
+                newCleanedUrl,
+                p.regions, // Keep persistent OCR TextRegions unchanged
+                'Clean manual selection'
+              );
+            })
+          );
+        } catch (err) {
+          console.error('Manual selection cleaning failed:', err);
+          setPages((prev) =>
+            prev.map((p) => (p.id === targetPage.id ? { ...p, isProcessing: false, processingMessage: undefined } : p))
+          );
+        }
         return;
       }
 

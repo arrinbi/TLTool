@@ -35,13 +35,7 @@ describe('Three Issues Fixes Verification Suite', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    // Switch to Cleaning stage first to draw a manual region
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
-    fireEvent.click(drawToggleBtn);
-
+    // Draw manual region in Stage 1 OCR
     const canvasOverlay = await waitFor(() => {
       const el = document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default');
       expect(el).not.toBeNull();
@@ -60,14 +54,14 @@ describe('Three Issues Fixes Verification Suite', () => {
       toJSON: () => {},
     });
 
-    // Draw manual box
+    // Enable drawing mode in Stage 1 OCR
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
+    fireEvent.click(drawToggleBtn);
+
+    // Draw manual box in Stage 1 OCR
     fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
     fireEvent.pointerMove(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
     fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
-
-    // Switch back to Stage 1 OCR
-    const ocrNavBtn = screen.getByRole('button', { name: /1\. OCR/i });
-    fireEvent.click(ocrNavBtn);
 
     // Select the region item in Stage 1 OCR so it becomes active
     const regionItem = await waitFor(() => screen.getByText(/\[100×100\]/i));
@@ -77,6 +71,7 @@ describe('Three Issues Fixes Verification Suite', () => {
     expect(screen.getByTitle('Delete Box')).toBeDefined();
 
     // Now switch to Stage 2 Cleaning
+    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
     fireEvent.click(cleaningNavBtn);
 
     // In Stage 2 Cleaning, region selection is cleared, so "Select a region on the canvas to clean or revert." prompt is shown

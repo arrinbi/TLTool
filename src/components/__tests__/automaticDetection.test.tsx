@@ -122,10 +122,7 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       expect(screen.getByText(/Sample_Manhwa_Page_01/i)).toBeDefined();
     });
 
-    // Switch to Cleaning stage to draw a manual selection region
-    const cleaningNavBtn = screen.getByRole('button', { name: /2\. Cleaning/i });
-    fireEvent.click(cleaningNavBtn);
-
+    // Draw a manual selection box in Stage 1 OCR
     const canvasOverlay = await waitFor(() => {
       const el = document.querySelector('.cursor-crosshair') || document.querySelector('.cursor-default');
       expect(el).not.toBeNull();
@@ -144,8 +141,8 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
       toJSON: () => {},
     });
 
-    // Enable drawing mode and draw manual region box
-    const drawToggleBtn = screen.getByTitle('Draw New Cleaning Mask Tool');
+    // Enable drawing mode in Stage 1 OCR and draw manual region box
+    const drawToggleBtn = screen.getByTitle('Draw New OCR Region Box');
     fireEvent.click(drawToggleBtn);
 
     fireEvent.pointerDown(canvasOverlay, { clientX: 50, clientY: 50, pointerId: 1 });
@@ -153,12 +150,11 @@ describe('Automatic Detection Execution Flow with Automatic OCR', () => {
     fireEvent.pointerUp(canvasOverlay, { clientX: 150, clientY: 150, pointerId: 1 });
 
     await waitFor(() => {
-      expect(screen.getByText(/Regions Cleaning Status \(1\)/i)).toBeDefined();
+      expect(screen.getByText(/Detected Regions \(1\)/i)).toBeDefined();
     });
 
-    // Switch back to Stage 1 OCR
-    const ocrNavBtn = screen.getByRole('button', { name: /1\. OCR/i });
-    fireEvent.click(ocrNavBtn);
+    // Reset recognizeSpy to only track Automatic OCR calls
+    recognizeSpy.mockClear();
 
     // Click Automatic OCR
     const autoBtn = screen.getAllByRole('button', { name: /Automatic OCR/i })[0];

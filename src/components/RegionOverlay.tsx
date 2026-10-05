@@ -125,7 +125,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
 
     ctx.clearRect(0, 0, displayWidth, displayHeight);
 
-    if (activeStage === 'typesetting' || activeStage === 'qc') return;
+    if (activeStage === 'cleaning' || activeStage === 'typesetting' || activeStage === 'qc') return;
 
     for (const region of regions) {
       if (region.isCleaned || !region.brushMask) continue;
@@ -643,9 +643,8 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
           );
         })}
 
-      {/* Rectangle Mode Regions (Stage 1 / Stage 2) */}
-      {activeStage !== 'typesetting' &&
-        activeStage !== 'qc' &&
+      {/* Rectangle Mode Regions (OCR & Translation Stage Overlay) */}
+      {(activeStage === 'ocr' || activeStage === 'translation') &&
         rectRegions.map((region) => {
           const isSelected = region.id === selectedRegionId;
           const left = region.bbox.x * scaleX;
@@ -690,7 +689,7 @@ const RegionOverlayComponent: React.FC<RegionOverlayProps> = ({
         })}
 
       {/* SVG Overlay for Brush Mask Regions */}
-      {activeStage !== 'typesetting' && activeStage !== 'qc' && brushRegions.length > 0 && (
+      {(activeStage === 'ocr' || activeStage === 'translation') && brushRegions.length > 0 && (
         <svg
           className="absolute inset-0 pointer-events-none z-10"
           style={{ width: displayWidth, height: displayHeight }}
